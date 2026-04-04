@@ -20,9 +20,10 @@
         display: flex;
         flex-direction: column;
         align-items: center;
-        justify-content: center;
+        justify-content: flex-start;
         gap: 2rem;
-        padding: 2rem;
+        padding: 3rem 2rem;
+        overflow-x: hidden;
       }
       h1 {
         font-weight: 600;
@@ -89,6 +90,46 @@
       .card p {
         font-size: 0.82rem;
       }
+      .controls {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.5rem 1.5rem;
+        width: 100%;
+        max-width: 36rem;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 14px;
+        padding: 1.25rem 1.5rem;
+      }
+      .controls h2 {
+        grid-column: 1 / -1;
+        margin: 0 0 0.25rem;
+        font-size: 0.9rem;
+        font-weight: 500;
+        opacity: 0.85;
+      }
+      .slider-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+      }
+      .slider-group label {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        opacity: 0.45;
+        display: flex;
+        justify-content: space-between;
+      }
+      .slider-group label span {
+        opacity: 1;
+        font-variant-numeric: tabular-nums;
+      }
+      .slider-group input[type="range"] {
+        width: 100%;
+        accent-color: #7b8cde;
+        cursor: pointer;
+      }
     </style>
   </head>
   <body>
@@ -102,6 +143,34 @@
     <div class="row">
       <button type="button" class="page-trigger">Ripple Page</button>
       <button type="button" class="page-trigger">Another</button>
+    </div>
+
+    <div class="controls" id="controls" data-riiiple-ignore>
+      <h2>Parameters</h2>
+      <div class="slider-group">
+        <label>Amplitude <span id="v-amplitude">3.0</span></label>
+        <input type="range" id="s-amplitude" min="0.5" max="15" step="0.5" value="3.0" />
+      </div>
+      <div class="slider-group">
+        <label>Frequency <span id="v-frequency">0.05</span></label>
+        <input type="range" id="s-frequency" min="0.01" max="0.15" step="0.005" value="0.05" />
+      </div>
+      <div class="slider-group">
+        <label>Speed <span id="v-speed">300</span></label>
+        <input type="range" id="s-speed" min="50" max="800" step="10" value="300" />
+      </div>
+      <div class="slider-group">
+        <label>Damping <span id="v-damping">0.008</span></label>
+        <input type="range" id="s-damping" min="0.001" max="0.04" step="0.001" value="0.008" />
+      </div>
+      <div class="slider-group">
+        <label>Decay <span id="v-decay">1.2</span></label>
+        <input type="range" id="s-decay" min="0.2" max="5" step="0.1" value="1.2" />
+      </div>
+      <div class="slider-group">
+        <label>Duration <span id="v-duration">3500</span>ms</label>
+        <input type="range" id="s-duration" min="500" max="8000" step="100" value="3500" />
+      </div>
     </div>
 
     <p class="section-label">Scoped ripple (button only affects the card)</p>
