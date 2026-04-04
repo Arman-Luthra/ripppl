@@ -21,7 +21,7 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 1.5rem;
+        gap: 2rem;
         padding: 2rem;
       }
       h1 {
@@ -37,6 +37,13 @@
         line-height: 1.5;
         opacity: 0.65;
         font-size: 0.9rem;
+      }
+      .section-label {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        opacity: 0.4;
+        margin: 0;
       }
       .row {
         display: flex;
@@ -61,22 +68,49 @@
         background: rgba(255, 255, 255, 0.1);
         border-color: rgba(255, 255, 255, 0.2);
       }
-      a {
-        color: #7ab8ff;
+      .card {
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.03);
+        border-radius: 14px;
+        padding: 1.5rem 2rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 1rem;
+        max-width: 24rem;
+        width: 100%;
+      }
+      .card h2 {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 500;
+        opacity: 0.85;
+      }
+      .card p {
+        font-size: 0.82rem;
       }
     </style>
   </head>
   <body>
     <h1>Riiiple</h1>
     <p>
-      Click anywhere on the page to trigger a ripple that displaces the actual
-      DOM elements. Buttons remain fully interactive.
+      A tiny library that displaces actual DOM elements with a ripple effect.
+      Click the buttons below to see it in action.
     </p>
+
+    <p class="section-label">Page-wide ripple (buttons trigger full page)</p>
     <div class="row">
-      <button type="button">Primary</button>
-      <button type="button">Another</button>
-      <button type="button">Ripple</button>
+      <button type="button" class="page-trigger">Ripple Page</button>
+      <button type="button" class="page-trigger">Another</button>
     </div>
+
+    <p class="section-label">Scoped ripple (button only affects the card)</p>
+    <div class="card" id="demo-card">
+      <h2>Scoped Card</h2>
+      <p>Only this card displaces when you click the button below.</p>
+      <button type="button" id="card-trigger">Ripple Card</button>
+    </div>
+
     <script type="module" src="/src/demo.ts"></script>
   </body>
 </html>

@@ -1,4 +1,5 @@
 export type RippleOptions = {
+  scope?: string | HTMLElement;
   maxScale?: number;
   attackMs?: number;
   decayRate?: number;
@@ -8,13 +9,40 @@ export type RippleOptions = {
   noiseType?: "turbulence" | "fractalNoise";
 };
 
+type TriggerInput =
+  | string
+  | HTMLElement
+  | NodeListOf<HTMLElement>
+  | HTMLElement[];
+
 let uid = 0;
 let frameSeed = 0;
 
+function resolveTriggers(input: TriggerInput): HTMLElement[] {
+  if (typeof input === "string") {
+    return Array.from(document.querySelectorAll<HTMLElement>(input));
+  }
+  if (input instanceof HTMLElement) {
+    return [input];
+  }
+  return Array.from(input);
+}
+
+function resolveScope(scope: string | HTMLElement | undefined): HTMLElement {
+  if (!scope) return document.body;
+  if (typeof scope === "string") {
+    return document.querySelector<HTMLElement>(scope) ?? document.body;
+  }
+  return scope;
+}
+
 export function attachRipple(
-  target: Document | HTMLElement = document,
+  trigger: TriggerInput,
   options: RippleOptions = {}
 ): () => void {
+  const triggers = resolveTriggers(trigger);
+  const scopeEl = resolveScope(options.scope);
+
   const maxScale = options.maxScale ?? 40;
   const attackMs = options.attackMs ?? 100;
   const decayRate = options.decayRate ?? 0.0025;
@@ -22,23 +50,40 @@ export function attachRipple(
   const freqDrift = options.frequencyDrift ?? 0.004;
   const octaves = options.octaves ?? 3;
   const noiseType = options.noiseType ?? "turbulence";
-  const filterId = `riiiple-${++uid}`;
+  const base = `riiiple-${++uid}`;
+  const idA = `${base}-a`;
+  const idB = `${base}-b`;
+  let useA = true;
 
-  const filterRoot: HTMLElement =
-    target instanceof Document ? document.body : target;
+  const svgA = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svgA.setAttribute("width", "0");
+  svgA.setAttribute("height", "0");
+  svgA.style.cssText = "position:absolute;";
 
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("width", "0");
-  svg.setAttribute("height", "0");
-  svg.style.cssText = "position:absolute;";
+  const svgB = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svgB.setAttribute("width", "0");
+  svgB.setAttribute("height", "0");
+  svgB.style.cssText = "position:absolute;";
+
+  const buildFilterHtml = (id: string, scale: number, freq: number, seed: number) =>
+    `<defs><filter id="${id}" x="0%" y="0%" width="100%" height="100%" color-interpolation-filters="sRGB"><feTurbulence type="${noiseType}" baseFrequency="${freq}" numOctaves="${octaves}" result="turb" seed="${seed}"/><feDisplacementMap in="SourceGraphic" in2="turb" xChannelSelector="R" yChannelSelector="G" scale="${scale}"/></filter></defs>`;
 
   const writeFilter = (scale: number, freq: number, seed: number) => {
-    svg.innerHTML = `<defs><filter id="${filterId}" x="0%" y="0%" width="100%" height="100%" color-interpolation-filters="sRGB"><feTurbulence type="${noiseType}" baseFrequency="${freq}" numOctaves="${octaves}" result="turb" seed="${seed}"/><feDisplacementMap in="SourceGraphic" in2="turb" xChannelSelector="R" yChannelSelector="G" scale="${scale}"/></filter></defs>`;
+    useA = !useA;
+    if (useA) {
+      svgA.innerHTML = buildFilterHtml(idA, scale, freq, seed);
+      scopeEl.style.filter = `url(#${idA})`;
+    } else {
+      svgB.innerHTML = buildFilterHtml(idB, scale, freq, seed);
+      scopeEl.style.filter = `url(#${idB})`;
+    }
   };
 
-  writeFilter(0, baseFreq, 0);
-  document.body.appendChild(svg);
-  filterRoot.style.filter = `url(#${filterId})`;
+  svgA.innerHTML = buildFilterHtml(idA, 0, baseFreq, 0);
+  svgB.innerHTML = buildFilterHtml(idB, 0, baseFreq, 0);
+  document.body.appendChild(svgA);
+  document.body.appendChild(svgB);
+  scopeEl.style.filter = `url(#${idA})`;
 
   const clickTimes: number[] = [];
   let raf = 0;
@@ -79,22 +124,29 @@ export function attachRipple(
 
   const onClick = (e: Event) => {
     if (!(e instanceof MouseEvent) || e.button !== 0) return;
-    const el = target instanceof Document ? null : target;
-    if (el && !el.contains(e.target as Node)) return;
     clickTimes.push(performance.now());
     if (clickTimes.length > 8) clickTimes.shift();
-    if (!running) {
-      running = true;
+    cancelAnimationFrame(raf);
+    running = true;
+    raf = requestAnimationFrame(tick);
+  };
+
+  const onVisibilityChange = () => {
+    if (document.visibilityState === "visible" && running) {
+      cancelAnimationFrame(raf);
       raf = requestAnimationFrame(tick);
     }
   };
 
-  target.addEventListener("click", onClick, true);
+  triggers.forEach((el) => el.addEventListener("click", onClick, true));
+  document.addEventListener("visibilitychange", onVisibilityChange);
 
   return () => {
     cancelAnimationFrame(raf);
-    filterRoot.style.filter = "";
-    target.removeEventListener("click", onClick, true);
-    svg.remove();
+    scopeEl.style.filter = "";
+    triggers.forEach((el) => el.removeEventListener("click", onClick, true));
+    document.removeEventListener("visibilitychange", onVisibilityChange);
+    svgA.remove();
+    svgB.remove();
   };
 }
