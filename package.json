@@ -1,7 +1,7 @@
 {
   "name": "ripppl",
   "version": "0.1.1",
-  "description": "Ripple displacement effect over the real DOM (WebGL + screen capture)",
+  "description": "Ripple displacement using WebGL over the DOM",
   "keywords": [
     "ripple",
     "webgl",
