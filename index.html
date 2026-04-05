@@ -125,10 +125,37 @@
         opacity: 1;
         font-variant-numeric: tabular-nums;
       }
-      .slider-group input[type="range"] {
+      .slider {
+        position: relative;
         width: 100%;
-        accent-color: #7b8cde;
+        height: 20px;
         cursor: pointer;
+        touch-action: none;
+        user-select: none;
+      }
+      .slider-track {
+        position: absolute;
+        top: 50%;
+        left: 0;
+        right: 0;
+        height: 6px;
+        transform: translateY(-50%);
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 3px;
+      }
+      .slider-fill {
+        height: 100%;
+        background: #7b8cde;
+        border-radius: 3px;
+      }
+      .slider-thumb {
+        position: absolute;
+        top: 50%;
+        width: 14px;
+        height: 14px;
+        background: #7b8cde;
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
       }
     </style>
   </head>
@@ -145,31 +172,49 @@
       <button type="button" class="page-trigger">Another</button>
     </div>
 
-    <div class="controls" id="controls" data-riiiple-ignore>
+    <div class="controls" id="controls">
       <h2>Parameters</h2>
       <div class="slider-group">
         <label>Amplitude <span id="v-amplitude">3.0</span></label>
-        <input type="range" id="s-amplitude" min="0.5" max="15" step="0.5" value="3.0" />
+        <div class="slider" data-param="amplitude" data-min="0.5" data-max="15" data-step="0.5" data-value="3.0">
+          <div class="slider-track"><div class="slider-fill"></div></div>
+          <div class="slider-thumb"></div>
+        </div>
       </div>
       <div class="slider-group">
         <label>Frequency <span id="v-frequency">0.05</span></label>
-        <input type="range" id="s-frequency" min="0.01" max="0.15" step="0.005" value="0.05" />
+        <div class="slider" data-param="frequency" data-min="0.01" data-max="0.15" data-step="0.005" data-value="0.05">
+          <div class="slider-track"><div class="slider-fill"></div></div>
+          <div class="slider-thumb"></div>
+        </div>
       </div>
       <div class="slider-group">
         <label>Speed <span id="v-speed">300</span></label>
-        <input type="range" id="s-speed" min="50" max="800" step="10" value="300" />
+        <div class="slider" data-param="speed" data-min="50" data-max="800" data-step="10" data-value="300">
+          <div class="slider-track"><div class="slider-fill"></div></div>
+          <div class="slider-thumb"></div>
+        </div>
       </div>
       <div class="slider-group">
         <label>Damping <span id="v-damping">0.008</span></label>
-        <input type="range" id="s-damping" min="0.001" max="0.04" step="0.001" value="0.008" />
+        <div class="slider" data-param="damping" data-min="0.001" data-max="0.04" data-step="0.001" data-value="0.008">
+          <div class="slider-track"><div class="slider-fill"></div></div>
+          <div class="slider-thumb"></div>
+        </div>
       </div>
       <div class="slider-group">
         <label>Decay <span id="v-decay">1.2</span></label>
-        <input type="range" id="s-decay" min="0.2" max="5" step="0.1" value="1.2" />
+        <div class="slider" data-param="decay" data-min="0.2" data-max="5" data-step="0.1" data-value="1.2">
+          <div class="slider-track"><div class="slider-fill"></div></div>
+          <div class="slider-thumb"></div>
+        </div>
       </div>
       <div class="slider-group">
         <label>Duration <span id="v-duration">3500</span>ms</label>
-        <input type="range" id="s-duration" min="500" max="8000" step="100" value="3500" />
+        <div class="slider" data-param="duration" data-min="500" data-max="8000" data-step="100" data-value="3500">
+          <div class="slider-track"><div class="slider-fill"></div></div>
+          <div class="slider-thumb"></div>
+        </div>
       </div>
     </div>
 

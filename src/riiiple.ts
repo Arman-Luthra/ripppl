@@ -53,6 +53,7 @@ void main(){
   vec2 uv = gl_FragCoord.xy / u_res;
   uv.y = 1.0 - uv.y;
   vec2 d = vec2(0.0);
+  float maxEnv = 0.0;
   for(int i = 0; i < 16; i++){
     if(i >= u_count) break;
     vec2 c = u_rip[i].xy;
@@ -70,11 +71,151 @@ void main(){
     float wave = sin(phase) * mask * ringDecay * temporal;
     float center = smoothstep(0.0, 10.0, dist);
 
+    float env = abs(wave) * u_amp * center;
+    maxEnv = max(maxEnv, env);
     d -= normalize(diff) * wave * u_amp * center;
   }
   d /= u_css;
-  gl_FragColor = texture2D(u_tex, uv + d);
+  vec3 col = texture2D(u_tex, uv + d).rgb;
+  float alpha = smoothstep(0.0, 0.3, maxEnv);
+  gl_FragColor = vec4(col * alpha, alpha);
 }`;
+
+function cloneNativeControls(doc: Document) {
+  const win = doc.defaultView;
+
+  doc.querySelectorAll<HTMLInputElement>('input[type="range"]').forEach((el) => {
+    const cs = win?.getComputedStyle(el);
+    const isNative =
+      cs?.appearance === "auto" ||
+      cs?.webkitAppearance === "slider-horizontal" ||
+      (!cs?.appearance && !cs?.webkitAppearance);
+
+    if (!isNative) return;
+
+    const w = el.offsetWidth || parseFloat(cs?.width || "200");
+    const h = el.offsetHeight || parseFloat(cs?.height || "20");
+    const min = parseFloat(el.min || "0");
+    const max = parseFloat(el.max || "100");
+    const val = parseFloat(el.value || String((min + max) / 2));
+    const pct = Math.max(0, Math.min(1, (val - min) / (max - min)));
+    const trackH = 4;
+    const thumbD = 14;
+    const thumbX = pct * (w - thumbD);
+
+    const box = doc.createElement("div");
+    box.style.cssText = `position:relative;width:${w}px;height:${h}px;display:inline-block;vertical-align:middle;`;
+
+    const track = doc.createElement("div");
+    track.style.cssText = `position:absolute;left:0;top:${(h - trackH) / 2}px;width:${w}px;height:${trackH}px;border-radius:${trackH / 2}px;background:#555;`;
+    box.appendChild(track);
+
+    const fill = doc.createElement("div");
+    fill.style.cssText = `position:absolute;left:0;top:0;width:${pct * 100}%;height:100%;border-radius:${trackH / 2}px;background:#7b8cde;`;
+    track.appendChild(fill);
+
+    const thumb = doc.createElement("div");
+    thumb.style.cssText = `position:absolute;left:${thumbX}px;top:${(h - thumbD) / 2}px;width:${thumbD}px;height:${thumbD}px;border-radius:50%;background:#7b8cde;`;
+    box.appendChild(thumb);
+
+    el.replaceWith(box);
+  });
+
+  doc.querySelectorAll<HTMLInputElement>('input[type="checkbox"]').forEach((el) => {
+    const cs = win?.getComputedStyle(el);
+    const s = el.offsetWidth || parseFloat(cs?.width || "16");
+    const accent = cs?.accentColor !== "auto" ? cs?.accentColor : "#7b8cde";
+
+    const box = doc.createElement("div");
+    box.style.cssText = `display:inline-block;width:${s}px;height:${s}px;border-radius:3px;vertical-align:middle;` +
+      (el.checked
+        ? `background:${accent};`
+        : `background:transparent;border:2px solid #888;box-sizing:border-box;`);
+
+    if (el.checked) {
+      const check = doc.createElement("div");
+      const inset = Math.round(s * 0.25);
+      const tickW = Math.round(s * 0.5);
+      const tickH = Math.round(s * 0.3);
+      check.style.cssText = `position:relative;left:${inset}px;top:${inset}px;width:${tickW}px;height:${tickH}px;` +
+        `border-left:2px solid #fff;border-bottom:2px solid #fff;transform:rotate(-45deg);`;
+      box.appendChild(check);
+    }
+    el.replaceWith(box);
+  });
+
+  doc.querySelectorAll<HTMLInputElement>('input[type="radio"]').forEach((el) => {
+    const cs = win?.getComputedStyle(el);
+    const s = el.offsetWidth || parseFloat(cs?.width || "16");
+    const accent = cs?.accentColor !== "auto" ? cs?.accentColor : "#7b8cde";
+
+    const box = doc.createElement("div");
+    box.style.cssText = `display:inline-block;width:${s}px;height:${s}px;border-radius:50%;vertical-align:middle;box-sizing:border-box;` +
+      (el.checked
+        ? `background:${accent};border:3px solid ${accent};`
+        : `background:transparent;border:2px solid #888;`);
+
+    if (el.checked) {
+      const dot = doc.createElement("div");
+      const dotS = Math.round(s * 0.4);
+      dot.style.cssText = `width:${dotS}px;height:${dotS}px;border-radius:50%;background:#fff;margin:${(s - dotS) / 2 - 3}px auto 0;`;
+      box.appendChild(dot);
+    }
+    el.replaceWith(box);
+  });
+
+  doc.querySelectorAll<HTMLSelectElement>("select").forEach((el) => {
+    const cs = win?.getComputedStyle(el);
+    const w = el.offsetWidth || parseFloat(cs?.width || "120");
+    const h = el.offsetHeight || parseFloat(cs?.height || "28");
+    const bg = cs?.backgroundColor || "#333";
+    const color = cs?.color || "#eee";
+    const text = el.selectedOptions?.[0]?.text || "";
+
+    const box = doc.createElement("div");
+    box.style.cssText = `display:inline-flex;align-items:center;justify-content:space-between;width:${w}px;height:${h}px;` +
+      `padding:0 8px;box-sizing:border-box;background:${bg};color:${color};border:1px solid #666;border-radius:4px;font:inherit;`;
+    const span = doc.createElement("span");
+    span.textContent = text;
+    span.style.cssText = "overflow:hidden;white-space:nowrap;text-overflow:ellipsis;";
+    const arrow = doc.createElement("span");
+    arrow.textContent = "\u25BC";
+    arrow.style.cssText = "font-size:0.6em;opacity:0.6;margin-left:4px;";
+    box.appendChild(span);
+    box.appendChild(arrow);
+    el.replaceWith(box);
+  });
+
+  doc.querySelectorAll<HTMLProgressElement>("progress").forEach((el) => {
+    const cs = win?.getComputedStyle(el);
+    const w = el.offsetWidth || parseFloat(cs?.width || "160");
+    const h = el.offsetHeight || parseFloat(cs?.height || "16");
+    const pct = el.max > 0 ? el.value / el.max : 0;
+    const accent = cs?.accentColor !== "auto" ? cs?.accentColor : "#7b8cde";
+
+    const box = doc.createElement("div");
+    box.style.cssText = `display:inline-block;width:${w}px;height:${h}px;background:#444;border-radius:${h / 2}px;overflow:hidden;vertical-align:middle;`;
+    const fill = doc.createElement("div");
+    fill.style.cssText = `width:${pct * 100}%;height:100%;background:${accent};border-radius:${h / 2}px;`;
+    box.appendChild(fill);
+    el.replaceWith(box);
+  });
+
+  doc.querySelectorAll<HTMLMeterElement>("meter").forEach((el) => {
+    const cs = win?.getComputedStyle(el);
+    const w = el.offsetWidth || parseFloat(cs?.width || "160");
+    const h = el.offsetHeight || parseFloat(cs?.height || "16");
+    const range = (el.max || 1) - (el.min || 0);
+    const pct = range > 0 ? ((el.value || 0) - (el.min || 0)) / range : 0;
+
+    const box = doc.createElement("div");
+    box.style.cssText = `display:inline-block;width:${w}px;height:${h}px;background:#444;border-radius:${h / 2}px;overflow:hidden;vertical-align:middle;`;
+    const fill = doc.createElement("div");
+    fill.style.cssText = `width:${pct * 100}%;height:100%;background:#6b6;border-radius:${h / 2}px;`;
+    box.appendChild(fill);
+    el.replaceWith(box);
+  });
+}
 
 export function attachRipple(
   trigger: TriggerInput,
@@ -104,8 +245,8 @@ export function attachRipple(
   (isBody ? document.body : scopeEl).appendChild(overlay);
 
   const gl = overlay.getContext("webgl", {
-    premultipliedAlpha: false,
-    alpha: false,
+    premultipliedAlpha: true,
+    alpha: true,
   })!;
   if (!gl)
     return {
@@ -192,8 +333,7 @@ export function attachRipple(
         height: innerHeight,
         windowWidth: innerWidth,
         windowHeight: innerHeight,
-        ignoreElements: (el: Element) =>
-          el.hasAttribute("data-riiiple-ignore"),
+        onclone: (clonedDoc: Document) => cloneNativeControls(clonedDoc),
       });
       if (disposed) return;
 
@@ -264,6 +404,8 @@ export function attachRipple(
     }
 
     syncSize();
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
     const cssW = isBody ? innerWidth : scopeEl.clientWidth;
     const cssH = isBody ? innerHeight : scopeEl.clientHeight;
     gl.uniform2f(uRes, overlay.width, overlay.height);
