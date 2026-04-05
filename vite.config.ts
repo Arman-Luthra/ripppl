@@ -10,7 +10,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      riiiple: resolve(__dirname, "src/riiiple.ts"),
+      ripppl: resolve(__dirname, "src/ripppl.ts"),
     },
   },
 });

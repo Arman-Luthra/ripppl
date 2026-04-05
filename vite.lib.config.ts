@@ -4,9 +4,9 @@ import { resolve } from "node:path";
 export default defineConfig({
   build: {
     lib: {
-      entry: resolve(__dirname, "src/riiiple.ts"),
-      name: "Riiiple",
-      fileName: "riiiple",
+      entry: resolve(__dirname, "src/ripppl.ts"),
+      name: "Ripyl",
+      fileName: "ripppl",
       formats: ["es"],
     },
     emptyOutDir: true,

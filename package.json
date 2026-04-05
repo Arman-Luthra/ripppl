@@ -1,6 +1,6 @@
 {
-  "name": "riiiple",
-  "version": "0.1.0",
+  "name": "ripppl",
+  "version": "0.1.1",
   "description": "Ripple displacement effect over the real DOM (WebGL + screen capture)",
   "keywords": [
     "ripple",
@@ -14,21 +14,21 @@
   "author": "Arman Luthra",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Arman-Luthra/riiiple.git"
+    "url": "git+https://github.com/Arman-Luthra/ripppl.git"
   },
   "bugs": {
-    "url": "https://github.com/Arman-Luthra/riiiple/issues"
+    "url": "https://github.com/Arman-Luthra/ripppl/issues"
   },
-  "homepage": "https://github.com/Arman-Luthra/riiiple#readme",
+  "homepage": "https://github.com/Arman-Luthra/ripppl#readme",
   "type": "module",
-  "main": "./dist/riiiple.js",
-  "module": "./dist/riiiple.js",
-  "types": "./dist/riiiple.d.ts",
+  "main": "./dist/ripppl.js",
+  "module": "./dist/ripppl.js",
+  "types": "./dist/ripppl.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/riiiple.d.ts",
-      "import": "./dist/riiiple.js",
-      "default": "./dist/riiiple.js"
+      "types": "./dist/ripppl.d.ts",
+      "import": "./dist/ripppl.js",
+      "default": "./dist/ripppl.js"
     }
   },
   "files": [

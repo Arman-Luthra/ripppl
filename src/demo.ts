@@ -1,5 +1,5 @@
 import { converter, formatCss, formatHex, parse } from "culori";
-import { attachRipple, type RippleTuning } from "./riiiple";
+import { attachRipple, type RippleTuning } from "./ripppl";
 
 const page = attachRipple(".page-trigger");
 const card = attachRipple("#card-trigger", { scope: "#demo-card" });
