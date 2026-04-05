@@ -4,6 +4,33 @@ function clamp01(x: number): number {
   return Math.min(1, Math.max(0, x));
 }
 
+function mixRgb(
+  a: [number, number, number],
+  b: [number, number, number],
+  t: number
+): [number, number, number] {
+  const u = 1 - t;
+  return [u * a[0] + t * b[0], u * a[1] + t * b[1], u * a[2] + t * b[2]];
+}
+
+function saturateRgb(
+  rgb: [number, number, number],
+  amt: number
+): [number, number, number] {
+  const y = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+  return [
+    clamp01(rgb[0] + (rgb[0] - y) * amt),
+    clamp01(rgb[1] + (rgb[1] - y) * amt),
+    clamp01(rgb[2] + (rgb[2] - y) * amt),
+  ];
+}
+
+type GlowPalette = {
+  dodge: [number, number, number];
+  screen: [number, number, number];
+  mix: [number, number, number];
+};
+
 function parseHueToken(tok: string): number {
   const t = tok.trim().toLowerCase();
   if (t.endsWith("deg")) return parseFloat(t.slice(0, -3));
@@ -59,8 +86,7 @@ function lrgbChannelToSrgb(c: number): number {
   return c * 12.92;
 }
 
-export type RippleOptions = {
-  scope?: string | HTMLElement;
+export type RippleTuning = {
   amplitude?: number;
   frequency?: number;
   speed?: number;
@@ -72,6 +98,11 @@ export type RippleOptions = {
   shimmer?: string | false;
   shimmerWidth?: number;
   shimmerDuration?: number;
+  shimmerGlowColor?: string;
+};
+
+export type RippleOptions = RippleTuning & {
+  scope?: string | HTMLElement;
 };
 
 function parseOklchToLinearRgb(css: string): [number, number, number] {
@@ -90,7 +121,8 @@ function parseOklchToLinearRgb(css: string): [number, number, number] {
 
 export type RippleHandle = {
   destroy: () => void;
-  update: (opts: Partial<RippleOptions>) => void;
+  update: (opts: Partial<RippleTuning>) => void;
+  trigger: (opts?: { x?: number; y?: number }) => void;
 };
 
 type TriggerInput =
@@ -130,13 +162,20 @@ uniform float u_chroma;
 uniform vec3 u_shimColor;
 uniform float u_shimStr;
 uniform float u_shimWidth;
+uniform float u_shimIntScale;
 uniform float u_shimDur;
+uniform vec3 u_glowDodge;
+uniform vec3 u_glowScreen;
+uniform vec3 u_glowMix;
 
 void main(){
   vec2 uv = gl_FragCoord.xy / u_res;
   uv.y = 1.0 - uv.y;
   vec2 d = vec2(0.0);
   float maxShim = 0.0;
+  float maxDodge = 0.0;
+  float maxScreen = 0.0;
+  float maxOuter = 0.0;
   for(int i = 0; i < 16; i++){
     if(i >= u_count) break;
     vec2 c = u_rip[i].xy;
@@ -175,8 +214,26 @@ void main(){
     float fadeT = clamp(t / max(u_shimDur, 0.001), 0.0, 1.0);
     float opacityEase = 1.0 - pow(fadeT, 2.35);
     float opacityFade = opacityEase * delay * exp(-t * 0.72);
-    float shimEdge = shimEnter * shimBell * shimTail * opacityFade * center;
+    float shimEdge =
+      shimEnter * shimBell * shimTail * opacityFade * center * u_shimIntScale;
     maxShim = max(maxShim, shimEdge);
+    float gBase = shimEnter * shimTail * opacityFade * center;
+    float su = max(sigma, 1.0);
+    float u = (b - peak) / su;
+    float ao = (u + 0.78) / 0.48;
+    float gOut = exp(-(ao * ao));
+    float am = (u + 0.22) / 0.26;
+    float gMid = exp(-(am * am));
+    float ac = u / 0.1;
+    float gHot = exp(-(ac * ac));
+    float mOuter =
+      max(0.0, gOut - gMid * 0.75 - gHot * 0.15) * gBase * u_shimIntScale;
+    float mScreen =
+      max(0.0, gMid - gHot * 0.82 - gOut * 0.35) * gBase * u_shimIntScale;
+    float mDodge = max(0.0, gHot - gMid * 0.45) * gBase * u_shimIntScale;
+    maxDodge = max(maxDodge, mDodge);
+    maxScreen = max(maxScreen, mScreen);
+    maxOuter = max(maxOuter, mOuter);
   }
   d /= u_css;
 
@@ -204,8 +261,24 @@ void main(){
   }
   if(u_shimStr > 0.0){
     float di = fract(sin(dot(floor(gl_FragCoord.xy), vec2(12.9898, 78.233))) * 43758.5453);
-    float sm = clamp(maxShim * u_shimStr + (di - 0.5) * 0.012, 0.0, 1.0);
-    col = mix(col, u_shimColor, sm);
+    float n = (di - 0.5) * 0.012;
+    float coreAmt = clamp(maxShim * u_shimStr + n, 0.0, 1.0);
+    float edge = 1.0 - coreAmt * 0.18;
+    float o = clamp(maxOuter * u_shimStr + n, 0.0, 1.0) * edge;
+    float s = clamp(maxScreen * u_shimStr + n, 0.0, 1.0) * edge;
+    col = mix(col, u_glowMix, o * 0.92);
+    vec3 scr = u_glowScreen * s * 1.02;
+    scr = min(scr, vec3(0.97));
+    col = vec3(1.0) - (vec3(1.0) - col) * (vec3(1.0) - scr);
+    col = min(col, vec3(1.0));
+    col = mix(col, u_shimColor, coreAmt);
+    float dg = clamp(maxDodge * u_shimStr + n, 0.0, 1.0);
+    float hot = dg * (0.62 + 0.38 * (1.0 - coreAmt));
+    vec3 cs = u_glowDodge * hot * 2.05;
+    cs = clamp(cs, vec3(0.0), vec3(0.995));
+    vec3 denom = vec3(1.0) - cs;
+    denom = max(denom, vec3(0.001));
+    col = min(col / denom, vec3(1.0));
   }
   gl_FragColor = vec4(col, 1.0);
 }`;
@@ -232,6 +305,23 @@ export function attachRipple(
   let shimStr = options.shimmer ? 1.0 : 0.0;
   let shimWidth = options.shimmerWidth ?? 1;
   let shimDur = (options.shimmerDuration ?? 2600) / 1000;
+  let glowOklch: string | undefined = options.shimmerGlowColor;
+  const computeGlowPalette = (): GlowPalette => {
+    if (!shimStr) {
+      return {
+        dodge: [1, 1, 1],
+        screen: [1, 1, 1],
+        mix: [1, 1, 1],
+      };
+    }
+    const base = glowOklch ? parseOklchToLinearRgb(glowOklch) : shimColor;
+    return {
+      dodge: mixRgb(base, [1, 1, 1], 0.94),
+      screen: saturateRgb(base, 1.72),
+      mix: mixRgb(saturateRgb(base, 0.45), [1, 1, 1], 0.4),
+    };
+  };
+  let glowPalette = computeGlowPalette();
 
   const overlay = document.createElement("canvas");
   overlay.setAttribute("data-riiiple-overlay", "");
@@ -241,8 +331,19 @@ export function attachRipple(
   } else {
     const pos = getComputedStyle(scopeEl).position;
     if (pos === "static") scopeEl.style.position = "relative";
+    const cs = getComputedStyle(scopeEl);
     overlay.style.cssText =
       "position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:2147483647;";
+    overlay.style.borderRadius = cs.borderRadius;
+    overlay.style.overflow = "hidden";
+  }
+  let scopeOverflowPrev: string | undefined;
+  if (!isBody) {
+    const ov = getComputedStyle(scopeEl).overflow;
+    if (ov === "visible") {
+      scopeOverflowPrev = scopeEl.style.overflow;
+      scopeEl.style.overflow = "hidden";
+    }
   }
   (isBody ? document.body : scopeEl).appendChild(overlay);
 
@@ -250,11 +351,16 @@ export function attachRipple(
     premultipliedAlpha: true,
     alpha: true,
   })!;
-  if (!gl)
+  if (!gl) {
+    overlay.remove();
+    if (!isBody && scopeOverflowPrev !== undefined)
+      scopeEl.style.overflow = scopeOverflowPrev;
     return {
       destroy() {},
       update() {},
+      trigger() {},
     };
+  }
 
   const compile = (type: number, src: string) => {
     const s = gl.createShader(type)!;
@@ -294,7 +400,11 @@ export function attachRipple(
   const uShimColor = loc("u_shimColor");
   const uShimStr = loc("u_shimStr");
   const uShimWidth = loc("u_shimWidth");
+  const uShimIntScale = loc("u_shimIntScale");
   const uShimDur = loc("u_shimDur");
+  const uGlowDodge = loc("u_glowDodge");
+  const uGlowScreen = loc("u_glowScreen");
+  const uGlowMix = loc("u_glowMix");
   const uRip: (WebGLUniformLocation | null)[] = [];
   for (let i = 0; i < 16; i++) uRip.push(loc(`u_rip[${i}]`));
 
@@ -447,7 +557,29 @@ export function attachRipple(
     gl.uniform3f(uShimColor, shimColor[0], shimColor[1], shimColor[2]);
     gl.uniform1f(uShimStr, shimStr);
     gl.uniform1f(uShimWidth, shimWidth);
+    gl.uniform1f(
+      uShimIntScale,
+      1 / Math.sqrt(Math.max(0.2, shimWidth))
+    );
     gl.uniform1f(uShimDur, shimDur);
+    gl.uniform3f(
+      uGlowDodge,
+      glowPalette.dodge[0],
+      glowPalette.dodge[1],
+      glowPalette.dodge[2]
+    );
+    gl.uniform3f(
+      uGlowScreen,
+      glowPalette.screen[0],
+      glowPalette.screen[1],
+      glowPalette.screen[2]
+    );
+    gl.uniform3f(
+      uGlowMix,
+      glowPalette.mix[0],
+      glowPalette.mix[1],
+      glowPalette.mix[2]
+    );
 
     for (let j = 0; j < Math.min(ripples.length, 16); j++) {
       gl.uniform3f(uRip[j], ripples[j].cx, ripples[j].cy, ripples[j].t0);
@@ -457,29 +589,29 @@ export function attachRipple(
     raf = requestAnimationFrame(tick);
   };
 
-  const onClick = async (e: Event) => {
-    if (!(e instanceof MouseEvent) || e.button !== 0) return;
-
-    const rect = isBody
-      ? { left: 0, top: 0, width: innerWidth, height: innerHeight }
-      : scopeEl.getBoundingClientRect();
-
-    const cx = (e.clientX - rect.left) / rect.width;
-    const cy = (e.clientY - rect.top) / rect.height;
-
-    if (!running && !capturing) {
-      await capture();
-    }
-
+  const emitRipple = async (cx: number, cy: number) => {
+    if (disposed) return;
+    const nx = clamp01(cx);
+    const ny = clamp01(cy);
+    if (!running && !capturing) await capture();
     const t0 = performance.now() / 1000;
-    ripples.push({ cx, cy, t0 });
+    ripples.push({ cx: nx, cy: ny, t0 });
     if (ripples.length > 16) ripples.shift();
-
     if (texReady && !running) {
       running = true;
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(tick);
     }
+  };
+
+  const onClick = async (e: Event) => {
+    if (!(e instanceof MouseEvent) || e.button !== 0) return;
+    const rect = isBody
+      ? { left: 0, top: 0, width: innerWidth, height: innerHeight }
+      : scopeEl.getBoundingClientRect();
+    const cx = (e.clientX - rect.left) / rect.width;
+    const cy = (e.clientY - rect.top) / rect.height;
+    await emitRipple(cx, cy);
   };
 
   triggers.forEach((el) => el.addEventListener("click", onClick, true));
@@ -489,9 +621,16 @@ export function attachRipple(
       disposed = true;
       cancelAnimationFrame(raf);
       triggers.forEach((el) => el.removeEventListener("click", onClick, true));
+      if (!isBody && scopeOverflowPrev !== undefined)
+        scopeEl.style.overflow = scopeOverflowPrev;
       overlay.remove();
     },
-    update(opts) {
+    trigger(opts?: { x?: number; y?: number }) {
+      const x = opts?.x ?? 0.5;
+      const y = opts?.y ?? 0.5;
+      void emitRipple(x, y);
+    },
+    update(opts: Partial<RippleTuning>) {
       if (opts.amplitude !== undefined) amp = opts.amplitude;
       if (opts.frequency !== undefined) freq = opts.frequency;
       if (opts.speed !== undefined) speed = opts.speed;
@@ -512,6 +651,10 @@ export function attachRipple(
       if (opts.shimmerWidth !== undefined) shimWidth = opts.shimmerWidth;
       if (opts.shimmerDuration !== undefined)
         shimDur = opts.shimmerDuration / 1000;
+      if (opts.shimmerGlowColor !== undefined)
+        glowOklch = opts.shimmerGlowColor;
+      if (opts.shimmer !== undefined || opts.shimmerGlowColor !== undefined)
+        glowPalette = computeGlowPalette();
     },
   };
 }

@@ -1,5 +1,5 @@
 import { converter, formatCss, formatHex, parse } from "culori";
-import { attachRipple } from "./riiiple";
+import { attachRipple, type RippleTuning } from "./riiiple";
 
 const page = attachRipple(".page-trigger");
 const card = attachRipple("#card-trigger", { scope: "#demo-card" });
@@ -51,6 +51,9 @@ function initSlider(el: HTMLElement) {
   });
 
   render();
+  const patch = { [param]: value } as Partial<RippleTuning>;
+  page.update(patch);
+  card.update(patch);
 }
 
 document.querySelectorAll<HTMLElement>(".slider").forEach(initSlider);
@@ -107,3 +110,7 @@ shimColorInput.addEventListener("input", () => {
 });
 
 syncPickerFromOklch(shimColorInput.value);
+
+document.getElementById("card-pulse")!.addEventListener("click", () => {
+  card.trigger({ x: 0.5, y: 0.5 });
+});
