@@ -1,6 +1,6 @@
 {
   "name": "ripppl",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Ripple displacement using WebGL over the DOM",
   "keywords": [
     "ripple",

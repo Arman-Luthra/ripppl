@@ -153,6 +153,24 @@ function resolveScope(scope: string | HTMLElement | undefined): HTMLElement {
   return scope;
 }
 
+function parseBorderRadiusMinPx(el: HTMLElement): number {
+  const raw = getComputedStyle(el).borderRadius || "0";
+  const parts = raw.split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return 0;
+  const rect = el.getBoundingClientRect();
+  let minR = Infinity;
+  for (const p of parts) {
+    if (p.endsWith("%")) {
+      const r = (parseFloat(p) / 100) * Math.min(rect.width, rect.height);
+      if (Number.isFinite(r)) minR = Math.min(minR, r);
+    } else {
+      const px = parseFloat(p);
+      if (Number.isFinite(px)) minR = Math.min(minR, px);
+    }
+  }
+  return minR === Infinity ? 0 : minR;
+}
+
 function resolveExcludeList(
   exclude: boolean | TriggerInput | undefined,
   triggers: HTMLElement[]
@@ -258,6 +276,12 @@ uniform vec3 u_glowScreen;
 uniform vec3 u_glowMix;
 uniform int u_exclCount;
 uniform vec4 u_excl[16];
+uniform float u_exclRad[16];
+
+float sdRoundBox(vec2 p, vec2 b, float r) {
+  vec2 q = abs(p) - b + r;
+  return min(max(q.x, q.y), 0.0) + length(max(q, vec2(0.0))) - r;
+}
 
 vec3 texRgb(vec2 tuv) {
   vec4 c = texture2D(u_tex, tuv);
@@ -271,7 +295,13 @@ void main(){
     for (int j = 0; j < 16; j++) {
       if (j >= u_exclCount) break;
       vec4 b = u_excl[j];
-      if (uv.x >= b.x && uv.x <= b.x + b.z && uv.y >= b.y && uv.y <= b.y + b.w) {
+      if (uv.x < b.x || uv.x > b.x + b.z || uv.y < b.y || uv.y > b.y + b.w) continue;
+      vec2 sizePx = b.zw * u_css;
+      vec2 pTl = uv * u_css - b.xy * u_css;
+      vec2 p = pTl - sizePx * 0.5;
+      float r = min(u_exclRad[j], min(sizePx.x, sizePx.y) * 0.5);
+      float d = sdRoundBox(p, sizePx * 0.5, r);
+      if (d <= 0.0) {
         gl_FragColor = vec4(texRgb(uv), 1.0);
         return;
       }
@@ -528,6 +558,8 @@ export function attachRipple(
   const uExclCount = loc("u_exclCount");
   const uExcl: (WebGLUniformLocation | null)[] = [];
   for (let i = 0; i < 16; i++) uExcl.push(loc(`u_excl[${i}]`));
+  const uExclRad: (WebGLUniformLocation | null)[] = [];
+  for (let i = 0; i < 16; i++) uExclRad.push(loc(`u_exclRad[${i}]`));
   const uRip: (WebGLUniformLocation | null)[] = [];
   for (let i = 0; i < 16; i++) uRip.push(loc(`u_rip[${i}]`));
 
@@ -835,8 +867,11 @@ export function attachRipple(
         const zw = er.width / sr.width;
         const zh = er.height / sr.height;
         gl.uniform4f(uExcl[j], x, y, zw, zh);
+        const rPx = parseBorderRadiusMinPx(el);
+        gl.uniform1f(uExclRad[j], rPx);
       } else {
         gl.uniform4f(uExcl[j], 0, 0, 0, 0);
+        gl.uniform1f(uExclRad[j], 0);
       }
     }
 
