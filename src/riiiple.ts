@@ -337,14 +337,6 @@ export function attachRipple(
     overlay.style.borderRadius = cs.borderRadius;
     overlay.style.overflow = "hidden";
   }
-  let scopeOverflowPrev: string | undefined;
-  if (!isBody) {
-    const ov = getComputedStyle(scopeEl).overflow;
-    if (ov === "visible") {
-      scopeOverflowPrev = scopeEl.style.overflow;
-      scopeEl.style.overflow = "hidden";
-    }
-  }
   (isBody ? document.body : scopeEl).appendChild(overlay);
 
   const gl = overlay.getContext("webgl", {
@@ -353,8 +345,6 @@ export function attachRipple(
   })!;
   if (!gl) {
     overlay.remove();
-    if (!isBody && scopeOverflowPrev !== undefined)
-      scopeEl.style.overflow = scopeOverflowPrev;
     return {
       destroy() {},
       update() {},
@@ -621,8 +611,6 @@ export function attachRipple(
       disposed = true;
       cancelAnimationFrame(raf);
       triggers.forEach((el) => el.removeEventListener("click", onClick, true));
-      if (!isBody && scopeOverflowPrev !== undefined)
-        scopeEl.style.overflow = scopeOverflowPrev;
       overlay.remove();
     },
     trigger(opts?: { x?: number; y?: number }) {
