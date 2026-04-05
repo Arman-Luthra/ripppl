@@ -3,6 +3,10 @@ import { attachRipple, type RippleTuning } from "./ripppl";
 
 const page = attachRipple(".page-trigger");
 const card = attachRipple("#card-trigger", { scope: "#demo-card" });
+const cardExclude = attachRipple("#exclude-card-trigger", {
+  scope: "#demo-card-exclude",
+  exclude: "#exclude-card-label",
+});
 
 const toOklch = converter("oklch");
 
@@ -35,6 +39,7 @@ function initSlider(el: HTMLElement) {
     render();
     page.update({ [param]: value });
     card.update({ [param]: value });
+    cardExclude.update({ [param]: value });
   };
 
   const onMove = (e: PointerEvent) => setFromX(e.clientX);
@@ -54,6 +59,7 @@ function initSlider(el: HTMLElement) {
   const patch = { [param]: value } as Partial<RippleTuning>;
   page.update(patch);
   card.update(patch);
+  cardExclude.update(patch);
 }
 
 document.querySelectorAll<HTMLElement>(".slider").forEach(initSlider);
@@ -65,6 +71,7 @@ chromaToggle.addEventListener("click", () => {
   chromaToggle.classList.toggle("on", chromaOn);
   page.update({ chromatic: chromaOn });
   card.update({ chromatic: chromaOn });
+  cardExclude.update({ chromatic: chromaOn });
 });
 
 const shimToggle = document.getElementById("t-shimmer")!;
@@ -88,6 +95,7 @@ const applyShimmer = () => {
   const val = shimOn ? shimColor : false;
   page.update({ shimmer: val });
   card.update({ shimmer: val });
+  cardExclude.update({ shimmer: val });
 };
 
 shimToggle.addEventListener("click", () => {
@@ -113,4 +121,9 @@ syncPickerFromOklch(shimColorInput.value);
 
 document.getElementById("card-pulse")!.addEventListener("click", () => {
   card.trigger({ x: 0.5, y: 0.5 });
+});
+
+const excludeLabel = document.getElementById("exclude-card-label")!;
+document.getElementById("exclude-from-label")!.addEventListener("click", () => {
+  cardExclude.trigger({ fromElement: excludeLabel });
 });

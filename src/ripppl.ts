@@ -103,6 +103,7 @@ export type RippleTuning = {
 
 export type RippleOptions = RippleTuning & {
   scope?: string | HTMLElement;
+  exclude?: boolean | TriggerInput;
 };
 
 function parseOklchToLinearRgb(css: string): [number, number, number] {
@@ -122,7 +123,11 @@ function parseOklchToLinearRgb(css: string): [number, number, number] {
 export type RippleHandle = {
   destroy: () => void;
   update: (opts: Partial<RippleTuning>) => void;
-  trigger: (opts?: { x?: number; y?: number }) => void;
+  trigger: (opts?: {
+    x?: number;
+    y?: number;
+    fromElement?: HTMLElement;
+  }) => void;
 };
 
 type TriggerInput =
@@ -147,6 +152,24 @@ function resolveScope(scope: string | HTMLElement | undefined): HTMLElement {
   return scope;
 }
 
+function resolveExcludeList(
+  exclude: boolean | TriggerInput | undefined,
+  triggers: HTMLElement[]
+): HTMLElement[] {
+  if (exclude === undefined || exclude === false) return [];
+  const raw =
+    exclude === true ? triggers : resolveTriggers(exclude as TriggerInput);
+  const seen = new Set<HTMLElement>();
+  const out: HTMLElement[] = [];
+  for (const el of raw) {
+    if (!seen.has(el)) {
+      seen.add(el);
+      out.push(el);
+    }
+  }
+  return out;
+}
+
 const VERT = `attribute vec2 a_pos;
 void main(){ gl_Position = vec4(a_pos, 0.0, 1.0); }`;
 
@@ -167,10 +190,22 @@ uniform float u_shimDur;
 uniform vec3 u_glowDodge;
 uniform vec3 u_glowScreen;
 uniform vec3 u_glowMix;
+uniform int u_exclCount;
+uniform vec4 u_excl[16];
 
 void main(){
-  vec2 uv = gl_FragCoord.xy / u_res;
-  uv.y = 1.0 - uv.y;
+  vec2 uv_frag = gl_FragCoord.xy / u_res;
+  vec2 uv = vec2(uv_frag.x, 1.0 - uv_frag.y);
+  if (u_exclCount > 0) {
+    for (int j = 0; j < 16; j++) {
+      if (j >= u_exclCount) break;
+      vec4 b = u_excl[j];
+      if (uv.x >= b.x && uv.x <= b.x + b.z && uv.y >= b.y && uv.y <= b.y + b.w) {
+        gl_FragColor = vec4(texture2D(u_tex, uv).rgb, 1.0);
+        return;
+      }
+    }
+  }
   vec2 d = vec2(0.0);
   float maxShim = 0.0;
   float maxDodge = 0.0;
@@ -251,13 +286,14 @@ void main(){
       vec2 rOff = spread * (f - 1.0) + perp * f;
       vec2 gOff = perp * f * 0.3;
       vec2 bOff = spread * (f + 1.0) - perp * f;
-      r += texture2D(u_tex, uv + d + rOff).r * w;
-      g += texture2D(u_tex, uv + d + gOff).g * w;
-      b += texture2D(u_tex, uv + d + bOff).b * w;
+      vec2 st = uv + vec2(d.x, d.y);
+      r += texture2D(u_tex, st + vec2(rOff.x, rOff.y)).r * w;
+      g += texture2D(u_tex, st + vec2(gOff.x, gOff.y)).g * w;
+      b += texture2D(u_tex, st + vec2(bOff.x, bOff.y)).b * w;
     }
     col = vec3(r, g, b) / tw;
   } else {
-    col = texture2D(u_tex, uv + d).rgb;
+    col = texture2D(u_tex, uv + vec2(d.x, d.y)).rgb;
   }
   if(u_shimStr > 0.0){
     float di = fract(sin(dot(floor(gl_FragCoord.xy), vec2(12.9898, 78.233))) * 43758.5453);
@@ -290,6 +326,8 @@ export function attachRipple(
   const triggers = resolveTriggers(trigger);
   const scopeEl = resolveScope(options.scope);
   const isBody = scopeEl === document.body;
+  const excludeEls = resolveExcludeList(options.exclude, triggers);
+  const overlayZ = excludeEls.length > 0 ? 2147483646 : 2147483647;
 
   const scopeRect = () => {
     if (isBody) {
@@ -339,27 +377,50 @@ export function attachRipple(
   };
   let glowPalette = computeGlowPalette();
 
+  const excludeRestore: Array<{
+    el: HTMLElement;
+    position: string;
+    zIndex: string;
+  }> = [];
+  for (const el of excludeEls) {
+    excludeRestore.push({
+      el,
+      position: el.style.position,
+      zIndex: el.style.zIndex,
+    });
+    if (getComputedStyle(el).position === "static") el.style.position = "relative";
+    el.style.zIndex = "2147483647";
+  }
+
   const overlay = document.createElement("canvas");
   overlay.setAttribute("data-ripppl-overlay", "");
   if (isBody) {
-    overlay.style.cssText =
-      "position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:2147483647;";
+    overlay.style.cssText = `position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:${overlayZ};`;
   } else {
     const pos = getComputedStyle(scopeEl).position;
     if (pos === "static") scopeEl.style.position = "relative";
     const cs = getComputedStyle(scopeEl);
-    overlay.style.cssText =
-      "position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:2147483647;";
+    overlay.style.cssText = `position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:${overlayZ};`;
     overlay.style.borderRadius = cs.borderRadius;
     overlay.style.overflow = "hidden";
   }
-  (isBody ? document.body : scopeEl).appendChild(overlay);
+  if (isBody) {
+    document.body.appendChild(overlay);
+  } else if (excludeEls.length > 0) {
+    scopeEl.insertBefore(overlay, scopeEl.firstChild);
+  } else {
+    scopeEl.appendChild(overlay);
+  }
 
   const gl = overlay.getContext("webgl", {
     premultipliedAlpha: true,
     alpha: true,
   })!;
   if (!gl) {
+    excludeRestore.forEach(({ el, position, zIndex }) => {
+      el.style.position = position;
+      el.style.zIndex = zIndex;
+    });
     overlay.remove();
     return {
       destroy() {},
@@ -411,6 +472,9 @@ export function attachRipple(
   const uGlowDodge = loc("u_glowDodge");
   const uGlowScreen = loc("u_glowScreen");
   const uGlowMix = loc("u_glowMix");
+  const uExclCount = loc("u_exclCount");
+  const uExcl: (WebGLUniformLocation | null)[] = [];
+  for (let i = 0; i < 16; i++) uExcl.push(loc(`u_excl[${i}]`));
   const uRip: (WebGLUniformLocation | null)[] = [];
   for (let i = 0; i < 16; i++) uRip.push(loc(`u_rip[${i}]`));
 
@@ -461,11 +525,25 @@ export function attachRipple(
         return true;
       };
 
+      const uploadCanvas = (canvas: HTMLCanvasElement) => {
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texImage2D(
+          gl.TEXTURE_2D,
+          0,
+          gl.RGBA,
+          gl.RGBA,
+          gl.UNSIGNED_BYTE,
+          canvas
+        );
+        texReady = true;
+        syncSize();
+      };
+
       const fullPw = Math.round(fullW * dpr);
       const fullPh = Math.round(fullH * dpr);
       const frozenScrollX = window.scrollX;
       const frozenScrollY = window.scrollY;
-      const rootRect = document.documentElement.getBoundingClientRect();
+      const srScoped = !isBody ? scopeRect() : null;
 
       let dataUrl: string;
       try {
@@ -494,51 +572,48 @@ export function attachRipple(
       const ih = img.naturalHeight;
       if (iw < 1 || ih < 1) return;
 
-      let srcX = 0;
-      let srcY = 0;
-      let srcW = iw;
-      let srcH = ih;
-      let destW = fullPw;
-      let destH = fullPh;
+      if (isBody) {
+        const tmpCanvas = document.createElement("canvas");
+        tmpCanvas.width = fullPw;
+        tmpCanvas.height = fullPh;
+        const ctx = tmpCanvas.getContext("2d")!;
+        ctx.drawImage(img, 0, 0, iw, ih, 0, 0, fullPw, fullPh);
+        uploadCanvas(tmpCanvas);
+      } else {
+        const sr = srScoped!;
+        if (sr.width < 1 || sr.height < 1) return;
+        const destW = Math.round(sr.width * dpr);
+        const destH = Math.round(sr.height * dpr);
+        const visLeft = Math.min(fullW, Math.max(0, sr.left));
+        const visTop = Math.min(fullH, Math.max(0, sr.top));
+        const visRight = Math.min(fullW, Math.max(0, sr.left + sr.width));
+        const visBottom = Math.min(fullH, Math.max(0, sr.top + sr.height));
+        const visW = visRight - visLeft;
+        const visH = visBottom - visTop;
+        if (visW < 1 || visH < 1) return;
 
-      if (!isBody) {
-        const rect = scopeEl.getBoundingClientRect();
-        const cs = getComputedStyle(scopeEl);
-        const bl = parseFloat(cs.borderLeftWidth) || 0;
-        const bt = parseFloat(cs.borderTopWidth) || 0;
-        const cropLeft = rect.left - rootRect.left + bl;
-        const cropTop = rect.top - rootRect.top + bt;
-        const cw = scopeEl.clientWidth;
-        const ch = scopeEl.clientHeight;
-        srcX = (cropLeft / fullW) * iw;
-        srcY = (cropTop / fullH) * ih;
-        srcW = (cw / fullW) * iw;
-        srcH = (ch / fullH) * ih;
-        destW = Math.round(cw * dpr);
-        destH = Math.round(ch * dpr);
-        srcX = Math.max(0, Math.min(srcX, iw - 1e-6));
-        srcY = Math.max(0, Math.min(srcY, ih - 1e-6));
-        srcW = Math.max(1e-6, Math.min(srcW, iw - srcX));
-        srcH = Math.max(1e-6, Math.min(srcH, ih - srcY));
+        let sx = Math.round((visLeft / fullW) * iw);
+        let sy = Math.round((visTop / fullH) * ih);
+        let sw = Math.round((visW / fullW) * iw);
+        let sh = Math.round((visH / fullH) * ih);
+        sx = Math.min(Math.max(0, sx), iw - 1);
+        sy = Math.min(Math.max(0, sy), ih - 1);
+        sw = Math.min(Math.max(1, sw), iw - sx);
+        sh = Math.min(Math.max(1, sh), ih - sy);
+
+        const dstX = Math.round(((visLeft - sr.left) / sr.width) * destW);
+        const dstY = Math.round(((visTop - sr.top) / sr.height) * destH);
+        const dstW = Math.round((visW / sr.width) * destW);
+        const dstH = Math.round((visH / sr.height) * destH);
+
+        const tmpCanvas = document.createElement("canvas");
+        tmpCanvas.width = destW;
+        tmpCanvas.height = destH;
+        const ctx = tmpCanvas.getContext("2d")!;
+        ctx.clearRect(0, 0, destW, destH);
+        ctx.drawImage(img, sx, sy, sw, sh, dstX, dstY, dstW, dstH);
+        uploadCanvas(tmpCanvas);
       }
-
-      const tmpCanvas = document.createElement("canvas");
-      tmpCanvas.width = destW;
-      tmpCanvas.height = destH;
-      const ctx = tmpCanvas.getContext("2d")!;
-      ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, destW, destH);
-
-      gl.bindTexture(gl.TEXTURE_2D, tex);
-      gl.texImage2D(
-        gl.TEXTURE_2D,
-        0,
-        gl.RGBA,
-        gl.RGBA,
-        gl.UNSIGNED_BYTE,
-        tmpCanvas
-      );
-      texReady = true;
-      syncSize();
     } catch {
       /* silent */
     } finally {
@@ -619,6 +694,23 @@ export function attachRipple(
       gl.uniform3f(uRip[j], ripples[j].cx, ripples[j].cy, ripples[j].t0);
     }
 
+    const sr = scopeRect();
+    const ec = Math.min(excludeEls.length, 16);
+    gl.uniform1i(uExclCount, ec);
+    for (let j = 0; j < 16; j++) {
+      if (j < ec) {
+        const el = excludeEls[j];
+        const er = el.getBoundingClientRect();
+        const x = (er.left - sr.left) / sr.width;
+        const y = (er.top - sr.top) / sr.height;
+        const zw = er.width / sr.width;
+        const zh = er.height / sr.height;
+        gl.uniform4f(uExcl[j], x, y, zw, zh);
+      } else {
+        gl.uniform4f(uExcl[j], 0, 0, 0, 0);
+      }
+    }
+
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     raf = requestAnimationFrame(tick);
   };
@@ -653,9 +745,25 @@ export function attachRipple(
       disposed = true;
       cancelAnimationFrame(raf);
       triggers.forEach((el) => el.removeEventListener("click", onClick, true));
+      excludeRestore.forEach(({ el, position, zIndex }) => {
+        el.style.position = position;
+        el.style.zIndex = zIndex;
+      });
       overlay.remove();
     },
-    trigger(opts?: { x?: number; y?: number }) {
+    trigger(opts?: {
+      x?: number;
+      y?: number;
+      fromElement?: HTMLElement;
+    }) {
+      if (opts?.fromElement) {
+        const rect = scopeRect();
+        const r = opts.fromElement.getBoundingClientRect();
+        const cx = (r.left + r.width * 0.5 - rect.left) / rect.width;
+        const cy = (r.top + r.height * 0.5 - rect.top) / rect.height;
+        void emitRipple(clamp01(cx), clamp01(cy));
+        return;
+      }
       const x = opts?.x ?? 0.5;
       const y = opts?.y ?? 0.5;
       void emitRipple(x, y);

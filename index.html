@@ -63,7 +63,8 @@
         flex-wrap: nowrap;
         max-width: 100%;
         overflow-x: auto;
-        overflow-y: hidden;
+        overflow-y: visible;
+        padding-bottom: 4px;
         -webkit-overflow-scrolling: touch;
       }
       button {
@@ -84,6 +85,17 @@
       button:hover {
         background: oklch(1 0 0 / 0.1);
         border-color: oklch(1 0 0 / 0.2);
+      }
+      .exclude-card-label {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.4rem 0.75rem;
+        border-radius: 8px;
+        border: 1px dashed oklch(0.62 0.15 274 / 0.55);
+        background: oklch(0.62 0.12 274 / 0.12);
+        font-size: 0.75rem;
+        opacity: 0.95;
       }
       .card {
         border: 1px solid oklch(1 0 0 / 0.08);
@@ -391,6 +403,21 @@
       <h2>Scoped Card</h2>
       <p>Only this card displaces when you click the button below.</p>
       <button type="button" id="card-trigger">Ripple Card</button>
+    </div>
+
+    <p class="section-label">Exclude (ripple around an element)</p>
+    <div class="card" id="demo-card-exclude">
+      <h2>Exclude</h2>
+      <p>
+        The label is excluded from displacement; the rest of the card still ripples.
+      </p>
+      <span class="exclude-card-label" id="exclude-card-label">Stays sharp</span>
+      <div class="row">
+        <button type="button" id="exclude-card-trigger">Ripple card</button>
+        <button type="button" id="exclude-from-label">
+          Ripple from label (API)
+        </button>
+      </div>
     </div>
 
     <script type="module" src="/src/demo.ts"></script>

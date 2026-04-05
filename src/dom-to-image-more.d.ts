@@ -4,6 +4,7 @@ declare module "dom-to-image-more" {
     bgcolor?: string;
     width?: number;
     height?: number;
+    scale?: number;
     style?: Partial<CSSStyleDeclaration>;
     quality?: number;
     imagePlaceholder?: string;
