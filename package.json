@@ -1,7 +1,25 @@
 {
   "name": "riiiple",
   "version": "0.1.0",
-  "private": true,
+  "description": "Ripple displacement effect over the real DOM (WebGL + screen capture)",
+  "keywords": [
+    "ripple",
+    "webgl",
+    "dom",
+    "effect",
+    "animation",
+    "canvas"
+  ],
+  "license": "MIT",
+  "author": "Arman Luthra",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Arman-Luthra/riiiple.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Arman-Luthra/riiiple/issues"
+  },
+  "homepage": "https://github.com/Arman-Luthra/riiiple#readme",
   "type": "module",
   "main": "./dist/riiiple.js",
   "module": "./dist/riiiple.js",
@@ -9,15 +27,20 @@
   "exports": {
     ".": {
       "types": "./dist/riiiple.d.ts",
-      "import": "./dist/riiiple.js"
+      "import": "./dist/riiiple.js",
+      "default": "./dist/riiiple.js"
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "LICENSE"
   ],
+  "sideEffects": false,
   "scripts": {
     "dev": "vite",
     "build": "vite build --config vite.lib.config.ts && tsc -p tsconfig.build.json",
+    "prepublishOnly": "npm run build",
     "preview": "vite preview"
   },
   "devDependencies": {
