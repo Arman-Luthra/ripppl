@@ -250,10 +250,11 @@
       Click the buttons below to see it in action.
     </p>
 
-    <p class="section-label">Page-wide ripple (no scope: full viewport; use for page-level CTAs)</p>
+    <p class="section-label">Page-wide ripple (full viewport)</p>
     <div class="row">
       <button type="button" class="page-trigger">Ripple Page</button>
       <button type="button" class="page-trigger">Another</button>
+      <button type="button" id="card-pulse">Pulse scoped card (API)</button>
     </div>
 
     <div class="controls" id="controls">
@@ -373,14 +374,11 @@
       </div>
     </div>
 
-    <p class="section-label">Scoped ripple (options.scope: clip to the element; respects rounded corners)</p>
+    <p class="section-label">Scoped ripple (clip to #demo-card)</p>
     <div class="card" id="demo-card">
       <h2>Scoped Card</h2>
       <p>Only this card displaces when you click the button below.</p>
-      <div class="row">
-        <button type="button" id="card-trigger">Ripple Card</button>
-        <button type="button" id="card-pulse">Trigger ripple (API)</button>
-      </div>
+      <button type="button" id="card-trigger">Ripple Card</button>
     </div>
 
     <script type="module" src="/src/demo.ts"></script>
