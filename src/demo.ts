@@ -51,3 +51,12 @@ function initSlider(el: HTMLElement) {
 }
 
 document.querySelectorAll<HTMLElement>(".slider").forEach(initSlider);
+
+const chromaToggle = document.getElementById("t-chromatic")!;
+let chromaOn = false;
+chromaToggle.addEventListener("click", () => {
+  chromaOn = !chromaOn;
+  chromaToggle.classList.toggle("on", chromaOn);
+  page.update({ chromatic: chromaOn });
+  card.update({ chromatic: chromaOn });
+});

@@ -157,6 +157,43 @@
         border-radius: 50%;
         transform: translate(-50%, -50%);
       }
+      .toggle-group {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        grid-column: 1 / -1;
+      }
+      .toggle-group label {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        opacity: 0.45;
+      }
+      .toggle {
+        width: 36px;
+        height: 20px;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.1);
+        cursor: pointer;
+        position: relative;
+        transition: background 0.2s;
+      }
+      .toggle.on {
+        background: #7b8cde;
+      }
+      .toggle-knob {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #fff;
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        transition: left 0.2s;
+      }
+      .toggle.on .toggle-knob {
+        left: 18px;
+      }
     </style>
   </head>
   <body>
@@ -182,8 +219,8 @@
         </div>
       </div>
       <div class="slider-group">
-        <label>Frequency <span id="v-frequency">0.05</span></label>
-        <div class="slider" data-param="frequency" data-min="0.01" data-max="0.15" data-step="0.005" data-value="0.05">
+        <label>Frequency <span id="v-frequency">0.018</span></label>
+        <div class="slider" data-param="frequency" data-min="0.005" data-max="0.08" data-step="0.001" data-value="0.018">
           <div class="slider-track"><div class="slider-fill"></div></div>
           <div class="slider-thumb"></div>
         </div>
@@ -196,8 +233,8 @@
         </div>
       </div>
       <div class="slider-group">
-        <label>Damping <span id="v-damping">0.008</span></label>
-        <div class="slider" data-param="damping" data-min="0.001" data-max="0.04" data-step="0.001" data-value="0.008">
+        <label>Damping <span id="v-damping">0.025</span></label>
+        <div class="slider" data-param="damping" data-min="0.001" data-max="0.06" data-step="0.001" data-value="0.025">
           <div class="slider-track"><div class="slider-fill"></div></div>
           <div class="slider-thumb"></div>
         </div>
@@ -214,6 +251,12 @@
         <div class="slider" data-param="duration" data-min="500" data-max="8000" data-step="100" data-value="3500">
           <div class="slider-track"><div class="slider-fill"></div></div>
           <div class="slider-thumb"></div>
+        </div>
+      </div>
+      <div class="toggle-group">
+        <label>Chromatic Aberration</label>
+        <div class="toggle" id="t-chromatic">
+          <div class="toggle-knob"></div>
         </div>
       </div>
     </div>

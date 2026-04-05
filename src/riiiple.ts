@@ -1,4 +1,4 @@
-import html2canvas from "html2canvas";
+import domtoimage from "dom-to-image-more";
 
 export type RippleOptions = {
   scope?: string | HTMLElement;
@@ -8,6 +8,7 @@ export type RippleOptions = {
   damping?: number;
   decay?: number;
   duration?: number;
+  chromatic?: boolean;
 };
 
 export type RippleHandle = {
@@ -48,12 +49,12 @@ uniform float u_time;
 uniform int u_count;
 uniform vec3 u_rip[16];
 uniform float u_freq, u_speed, u_amp, u_damp, u_decay;
+uniform float u_chroma;
 
 void main(){
   vec2 uv = gl_FragCoord.xy / u_res;
   uv.y = 1.0 - uv.y;
   vec2 d = vec2(0.0);
-  float maxEnv = 0.0;
   for(int i = 0; i < 16; i++){
     if(i >= u_count) break;
     vec2 c = u_rip[i].xy;
@@ -71,151 +72,34 @@ void main(){
     float wave = sin(phase) * mask * ringDecay * temporal;
     float center = smoothstep(0.0, 10.0, dist);
 
-    float env = abs(wave) * u_amp * center;
-    maxEnv = max(maxEnv, env);
     d -= normalize(diff) * wave * u_amp * center;
   }
   d /= u_css;
-  vec3 col = texture2D(u_tex, uv + d).rgb;
-  float alpha = smoothstep(0.0, 0.3, maxEnv);
-  gl_FragColor = vec4(col * alpha, alpha);
+
+  vec3 col;
+  if(u_chroma > 0.0){
+    vec2 spread = d * u_chroma;
+    vec2 perp = vec2(-spread.y, spread.x) * 0.5;
+
+    float r = 0.0, g = 0.0, b = 0.0;
+    float tw = 0.0;
+    for(int s = -3; s <= 3; s++){
+      float f = float(s) / 3.0;
+      float w = exp(-2.0 * f * f);
+      tw += w;
+      vec2 rOff = spread * (f - 1.0) + perp * f;
+      vec2 gOff = perp * f * 0.3;
+      vec2 bOff = spread * (f + 1.0) - perp * f;
+      r += texture2D(u_tex, uv + d + rOff).r * w;
+      g += texture2D(u_tex, uv + d + gOff).g * w;
+      b += texture2D(u_tex, uv + d + bOff).b * w;
+    }
+    col = vec3(r, g, b) / tw;
+  } else {
+    col = texture2D(u_tex, uv + d).rgb;
+  }
+  gl_FragColor = vec4(col, 1.0);
 }`;
-
-function cloneNativeControls(doc: Document) {
-  const win = doc.defaultView;
-
-  doc.querySelectorAll<HTMLInputElement>('input[type="range"]').forEach((el) => {
-    const cs = win?.getComputedStyle(el);
-    const isNative =
-      cs?.appearance === "auto" ||
-      cs?.webkitAppearance === "slider-horizontal" ||
-      (!cs?.appearance && !cs?.webkitAppearance);
-
-    if (!isNative) return;
-
-    const w = el.offsetWidth || parseFloat(cs?.width || "200");
-    const h = el.offsetHeight || parseFloat(cs?.height || "20");
-    const min = parseFloat(el.min || "0");
-    const max = parseFloat(el.max || "100");
-    const val = parseFloat(el.value || String((min + max) / 2));
-    const pct = Math.max(0, Math.min(1, (val - min) / (max - min)));
-    const trackH = 4;
-    const thumbD = 14;
-    const thumbX = pct * (w - thumbD);
-
-    const box = doc.createElement("div");
-    box.style.cssText = `position:relative;width:${w}px;height:${h}px;display:inline-block;vertical-align:middle;`;
-
-    const track = doc.createElement("div");
-    track.style.cssText = `position:absolute;left:0;top:${(h - trackH) / 2}px;width:${w}px;height:${trackH}px;border-radius:${trackH / 2}px;background:#555;`;
-    box.appendChild(track);
-
-    const fill = doc.createElement("div");
-    fill.style.cssText = `position:absolute;left:0;top:0;width:${pct * 100}%;height:100%;border-radius:${trackH / 2}px;background:#7b8cde;`;
-    track.appendChild(fill);
-
-    const thumb = doc.createElement("div");
-    thumb.style.cssText = `position:absolute;left:${thumbX}px;top:${(h - thumbD) / 2}px;width:${thumbD}px;height:${thumbD}px;border-radius:50%;background:#7b8cde;`;
-    box.appendChild(thumb);
-
-    el.replaceWith(box);
-  });
-
-  doc.querySelectorAll<HTMLInputElement>('input[type="checkbox"]').forEach((el) => {
-    const cs = win?.getComputedStyle(el);
-    const s = el.offsetWidth || parseFloat(cs?.width || "16");
-    const accent = cs?.accentColor !== "auto" ? cs?.accentColor : "#7b8cde";
-
-    const box = doc.createElement("div");
-    box.style.cssText = `display:inline-block;width:${s}px;height:${s}px;border-radius:3px;vertical-align:middle;` +
-      (el.checked
-        ? `background:${accent};`
-        : `background:transparent;border:2px solid #888;box-sizing:border-box;`);
-
-    if (el.checked) {
-      const check = doc.createElement("div");
-      const inset = Math.round(s * 0.25);
-      const tickW = Math.round(s * 0.5);
-      const tickH = Math.round(s * 0.3);
-      check.style.cssText = `position:relative;left:${inset}px;top:${inset}px;width:${tickW}px;height:${tickH}px;` +
-        `border-left:2px solid #fff;border-bottom:2px solid #fff;transform:rotate(-45deg);`;
-      box.appendChild(check);
-    }
-    el.replaceWith(box);
-  });
-
-  doc.querySelectorAll<HTMLInputElement>('input[type="radio"]').forEach((el) => {
-    const cs = win?.getComputedStyle(el);
-    const s = el.offsetWidth || parseFloat(cs?.width || "16");
-    const accent = cs?.accentColor !== "auto" ? cs?.accentColor : "#7b8cde";
-
-    const box = doc.createElement("div");
-    box.style.cssText = `display:inline-block;width:${s}px;height:${s}px;border-radius:50%;vertical-align:middle;box-sizing:border-box;` +
-      (el.checked
-        ? `background:${accent};border:3px solid ${accent};`
-        : `background:transparent;border:2px solid #888;`);
-
-    if (el.checked) {
-      const dot = doc.createElement("div");
-      const dotS = Math.round(s * 0.4);
-      dot.style.cssText = `width:${dotS}px;height:${dotS}px;border-radius:50%;background:#fff;margin:${(s - dotS) / 2 - 3}px auto 0;`;
-      box.appendChild(dot);
-    }
-    el.replaceWith(box);
-  });
-
-  doc.querySelectorAll<HTMLSelectElement>("select").forEach((el) => {
-    const cs = win?.getComputedStyle(el);
-    const w = el.offsetWidth || parseFloat(cs?.width || "120");
-    const h = el.offsetHeight || parseFloat(cs?.height || "28");
-    const bg = cs?.backgroundColor || "#333";
-    const color = cs?.color || "#eee";
-    const text = el.selectedOptions?.[0]?.text || "";
-
-    const box = doc.createElement("div");
-    box.style.cssText = `display:inline-flex;align-items:center;justify-content:space-between;width:${w}px;height:${h}px;` +
-      `padding:0 8px;box-sizing:border-box;background:${bg};color:${color};border:1px solid #666;border-radius:4px;font:inherit;`;
-    const span = doc.createElement("span");
-    span.textContent = text;
-    span.style.cssText = "overflow:hidden;white-space:nowrap;text-overflow:ellipsis;";
-    const arrow = doc.createElement("span");
-    arrow.textContent = "\u25BC";
-    arrow.style.cssText = "font-size:0.6em;opacity:0.6;margin-left:4px;";
-    box.appendChild(span);
-    box.appendChild(arrow);
-    el.replaceWith(box);
-  });
-
-  doc.querySelectorAll<HTMLProgressElement>("progress").forEach((el) => {
-    const cs = win?.getComputedStyle(el);
-    const w = el.offsetWidth || parseFloat(cs?.width || "160");
-    const h = el.offsetHeight || parseFloat(cs?.height || "16");
-    const pct = el.max > 0 ? el.value / el.max : 0;
-    const accent = cs?.accentColor !== "auto" ? cs?.accentColor : "#7b8cde";
-
-    const box = doc.createElement("div");
-    box.style.cssText = `display:inline-block;width:${w}px;height:${h}px;background:#444;border-radius:${h / 2}px;overflow:hidden;vertical-align:middle;`;
-    const fill = doc.createElement("div");
-    fill.style.cssText = `width:${pct * 100}%;height:100%;background:${accent};border-radius:${h / 2}px;`;
-    box.appendChild(fill);
-    el.replaceWith(box);
-  });
-
-  doc.querySelectorAll<HTMLMeterElement>("meter").forEach((el) => {
-    const cs = win?.getComputedStyle(el);
-    const w = el.offsetWidth || parseFloat(cs?.width || "160");
-    const h = el.offsetHeight || parseFloat(cs?.height || "16");
-    const range = (el.max || 1) - (el.min || 0);
-    const pct = range > 0 ? ((el.value || 0) - (el.min || 0)) / range : 0;
-
-    const box = doc.createElement("div");
-    box.style.cssText = `display:inline-block;width:${w}px;height:${h}px;background:#444;border-radius:${h / 2}px;overflow:hidden;vertical-align:middle;`;
-    const fill = doc.createElement("div");
-    fill.style.cssText = `width:${pct * 100}%;height:100%;background:#6b6;border-radius:${h / 2}px;`;
-    box.appendChild(fill);
-    el.replaceWith(box);
-  });
-}
 
 export function attachRipple(
   trigger: TriggerInput,
@@ -226,21 +110,23 @@ export function attachRipple(
   const isBody = scopeEl === document.body;
 
   let amp = options.amplitude ?? 3.0;
-  let freq = options.frequency ?? 0.05;
+  let freq = options.frequency ?? 0.018;
   let speed = options.speed ?? 300.0;
-  let damp = options.damping ?? 0.008;
+  let damp = options.damping ?? 0.025;
   let decay = options.decay ?? 1.2;
   let duration = (options.duration ?? 3500) / 1000;
+  let chromatic = options.chromatic ?? false;
 
   const overlay = document.createElement("canvas");
+  overlay.setAttribute("data-riiiple-overlay", "");
   if (isBody) {
     overlay.style.cssText =
-      "position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:2147483647;display:none;";
+      "position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:2147483647;";
   } else {
     const pos = getComputedStyle(scopeEl).position;
     if (pos === "static") scopeEl.style.position = "relative";
     overlay.style.cssText =
-      "position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:2147483647;display:none;";
+      "position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:2147483647;";
   }
   (isBody ? document.body : scopeEl).appendChild(overlay);
 
@@ -288,6 +174,7 @@ export function attachRipple(
   const uAmp = loc("u_amp");
   const uDamp = loc("u_damp");
   const uDecay = loc("u_decay");
+  const uChroma = loc("u_chroma");
   const uRip: (WebGLUniformLocation | null)[] = [];
   for (let i = 0; i < 16; i++) uRip.push(loc(`u_rip[${i}]`));
 
@@ -318,46 +205,53 @@ export function attachRipple(
     }
   };
 
+  const clearOverlay = () => {
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+  };
+
   const capture = async () => {
     if (capturing || disposed) return;
     capturing = true;
-    overlay.style.display = "none";
+    clearOverlay();
     try {
       const dpr = devicePixelRatio || 1;
-      const fullSnap = await html2canvas(document.body, {
-        useCORS: true,
-        allowTaint: true,
-        scale: dpr,
-        logging: false,
-        width: innerWidth,
-        height: innerHeight,
-        windowWidth: innerWidth,
-        windowHeight: innerHeight,
-        onclone: (clonedDoc: Document) => cloneNativeControls(clonedDoc),
+      const target = isBody ? document.documentElement : scopeEl;
+      const w = isBody ? innerWidth : scopeEl.clientWidth;
+      const h = isBody ? innerHeight : scopeEl.clientHeight;
+
+      const filter = (node: Node) => {
+        if (node instanceof Element && node.hasAttribute("data-riiiple-overlay"))
+          return false;
+        return true;
+      };
+
+      const pw = Math.round(w * dpr);
+      const ph = Math.round(h * dpr);
+
+      const dataUrl: string = await domtoimage.toPng(target, {
+        width: pw,
+        height: ph,
+        style: {
+          transform: `scale(${dpr})`,
+          transformOrigin: "top left",
+          width: w + "px",
+          height: h + "px",
+        },
+        filter,
       });
       if (disposed) return;
 
-      let source: HTMLCanvasElement = fullSnap;
+      const img = new Image();
+      img.src = dataUrl;
+      await img.decode();
+      if (disposed) return;
 
-      if (!isBody) {
-        const rect = scopeEl.getBoundingClientRect();
-        const crop = document.createElement("canvas");
-        crop.width = Math.round(rect.width * dpr);
-        crop.height = Math.round(rect.height * dpr);
-        const ctx = crop.getContext("2d")!;
-        ctx.drawImage(
-          fullSnap,
-          Math.round(rect.left * dpr),
-          Math.round(rect.top * dpr),
-          crop.width,
-          crop.height,
-          0,
-          0,
-          crop.width,
-          crop.height
-        );
-        source = crop;
-      }
+      const tmpCanvas = document.createElement("canvas");
+      tmpCanvas.width = pw;
+      tmpCanvas.height = ph;
+      const ctx = tmpCanvas.getContext("2d")!;
+      ctx.drawImage(img, 0, 0, pw, ph);
 
       gl.bindTexture(gl.TEXTURE_2D, tex);
       gl.texImage2D(
@@ -366,7 +260,7 @@ export function attachRipple(
         gl.RGBA,
         gl.RGBA,
         gl.UNSIGNED_BYTE,
-        source
+        tmpCanvas
       );
       texReady = true;
       syncSize();
@@ -392,9 +286,9 @@ export function attachRipple(
     }
 
     if (ripples.length === 0) {
-      overlay.style.display = "none";
+      clearOverlay();
       running = false;
-      capture();
+      texReady = false;
       return;
     }
 
@@ -417,13 +311,13 @@ export function attachRipple(
     gl.uniform1f(uAmp, amp);
     gl.uniform1f(uDamp, damp);
     gl.uniform1f(uDecay, decay);
+    gl.uniform1f(uChroma, chromatic ? 0.4 : 0.0);
 
     for (let j = 0; j < Math.min(ripples.length, 16); j++) {
       gl.uniform3f(uRip[j], ripples[j].cx, ripples[j].cy, ripples[j].t0);
     }
 
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-    overlay.style.display = "";
     raf = requestAnimationFrame(tick);
   };
 
@@ -436,14 +330,14 @@ export function attachRipple(
 
     const cx = (e.clientX - rect.left) / rect.width;
     const cy = (e.clientY - rect.top) / rect.height;
-    const t0 = performance.now() / 1000;
 
-    ripples.push({ cx, cy, t0 });
-    if (ripples.length > 16) ripples.shift();
-
-    if (!texReady && !capturing) {
+    if (!running && !capturing) {
       await capture();
     }
+
+    const t0 = performance.now() / 1000;
+    ripples.push({ cx, cy, t0 });
+    if (ripples.length > 16) ripples.shift();
 
     if (texReady && !running) {
       running = true;
@@ -453,8 +347,6 @@ export function attachRipple(
   };
 
   triggers.forEach((el) => el.addEventListener("click", onClick, true));
-
-  capture();
 
   return {
     destroy() {
@@ -470,6 +362,7 @@ export function attachRipple(
       if (opts.damping !== undefined) damp = opts.damping;
       if (opts.decay !== undefined) decay = opts.decay;
       if (opts.duration !== undefined) duration = opts.duration / 1000;
+      if (opts.chromatic !== undefined) chromatic = opts.chromatic;
     },
   };
 }
