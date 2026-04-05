@@ -1,5 +1,64 @@
 import domtoimage from "dom-to-image-more";
 
+function clamp01(x: number): number {
+  return Math.min(1, Math.max(0, x));
+}
+
+function parseHueToken(tok: string): number {
+  const t = tok.trim().toLowerCase();
+  if (t.endsWith("deg")) return parseFloat(t.slice(0, -3));
+  if (t.endsWith("rad")) return (parseFloat(t.slice(0, -3)) * 180) / Math.PI;
+  if (t.endsWith("turn")) return parseFloat(t.slice(0, -4)) * 360;
+  if (t.endsWith("grad")) return (parseFloat(t.slice(0, -4)) * 360) / 400;
+  return parseFloat(t);
+}
+
+function parseOklchComponents(
+  s: string
+): { l: number; c: number; h: number } | null {
+  const t = s.trim();
+  if (!/^oklch\s*\(/i.test(t)) return null;
+  const inner = t.slice(t.indexOf("(") + 1, t.lastIndexOf(")"));
+  const main = inner.split(/\s*\/\s*/)[0].trim();
+  const tokens = main.split(/\s+/).filter(Boolean);
+  if (tokens.length < 3) return null;
+  let l: number;
+  if (tokens[0].endsWith("%")) {
+    l = Math.min(1, Math.max(0, parseFloat(tokens[0]) / 100));
+  } else {
+    l = Math.min(1, Math.max(0, parseFloat(tokens[0])));
+  }
+  let c: number;
+  if (tokens[1].endsWith("%")) {
+    c = Math.max(0, (parseFloat(tokens[1]) * 0.4) / 100);
+  } else {
+    c = Math.max(0, parseFloat(tokens[1]));
+  }
+  const h = parseHueToken(tokens[2]);
+  if (!Number.isFinite(l) || !Number.isFinite(c) || !Number.isFinite(h))
+    return null;
+  return { l, c, h };
+}
+
+function oklabToLrgb(l: number, a: number, b: number): [number, number, number] {
+  const L = Math.pow(l + 0.3963377773761749 * a + 0.2158037573099136 * b, 3);
+  const M = Math.pow(l - 0.1055613458156586 * a - 0.0638541728258133 * b, 3);
+  const S = Math.pow(l - 0.0894841775298119 * a - 1.2914855480194092 * b, 3);
+  return [
+    4.0767416360759574 * L - 3.3077115392580616 * M + 0.2309699031821044 * S,
+    -1.2684379732850317 * L + 2.6097573492876887 * M - 0.3413193760026573 * S,
+    -0.0041960761386756 * L - 0.7034186179359362 * M + 1.7076146940746117 * S,
+  ];
+}
+
+function lrgbChannelToSrgb(c: number): number {
+  const abs = Math.abs(c);
+  if (abs > 0.0031308) {
+    return (Math.sign(c) || 1) * (1.055 * Math.pow(abs, 1 / 2.4) - 0.055);
+  }
+  return c * 12.92;
+}
+
 export type RippleOptions = {
   scope?: string | HTMLElement;
   amplitude?: number;
@@ -16,30 +75,17 @@ export type RippleOptions = {
 };
 
 function parseOklchToLinearRgb(css: string): [number, number, number] {
-  const s = css.trim();
-  if (!/^oklch\s*\(/i.test(s)) return [1, 1, 1];
-  const el = document.createElement("div");
-  el.style.color = s;
-  document.documentElement.appendChild(el);
-  const out = getComputedStyle(el).color;
-  el.remove();
-  const comma = out.match(
-    /rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/
-  );
-  if (comma)
-    return [
-      parseFloat(comma[1]) / 255,
-      parseFloat(comma[2]) / 255,
-      parseFloat(comma[3]) / 255,
-    ];
-  const space = out.match(/rgba?\(\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)/);
-  if (space)
-    return [
-      parseFloat(space[1]) / 255,
-      parseFloat(space[2]) / 255,
-      parseFloat(space[3]) / 255,
-    ];
-  return [1, 1, 1];
+  const o = parseOklchComponents(css);
+  if (!o) return [1, 1, 1];
+  const hr = (o.h / 180) * Math.PI;
+  const a = o.c ? o.c * Math.cos(hr) : 0;
+  const b = o.c ? o.c * Math.sin(hr) : 0;
+  const [lr, lg, lb] = oklabToLrgb(o.l, a, b);
+  return [
+    clamp01(lrgbChannelToSrgb(lr)),
+    clamp01(lrgbChannelToSrgb(lg)),
+    clamp01(lrgbChannelToSrgb(lb)),
+  ];
 }
 
 export type RippleHandle = {
