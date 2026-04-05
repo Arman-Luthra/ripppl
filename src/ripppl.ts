@@ -1,4 +1,5 @@
 import domtoimage from "dom-to-image-more";
+import html2canvas from "html2canvas";
 
 function clamp01(x: number): number {
   return Math.min(1, Math.max(0, x));
@@ -170,6 +171,71 @@ function resolveExcludeList(
   return out;
 }
 
+function cssColorIsTransparent(bg: string): boolean {
+  const s = bg.trim().toLowerCase();
+  if (s === "transparent") return true;
+  const m = s.match(
+    /^rgba\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*,\s*([\d.]+)\s*\)/
+  );
+  if (m) return parseFloat(m[1]) < 0.5;
+  return false;
+}
+
+function resolveSolidBackground(el: HTMLElement): string {
+  let node: HTMLElement | null = el;
+  while (node) {
+    const bg = getComputedStyle(node).backgroundColor;
+    if (!cssColorIsTransparent(bg)) return bg;
+    node = node.parentElement;
+  }
+  const bodyBg = getComputedStyle(document.body).backgroundColor;
+  if (!cssColorIsTransparent(bodyBg)) return bodyBg;
+  return "#1a1a24";
+}
+
+function samplePixel(
+  img: HTMLImageElement,
+  pctx: CanvasRenderingContext2D,
+  px: number,
+  py: number
+): string | undefined {
+  const x = Math.max(0, Math.min(Math.floor(px), img.naturalWidth - 1));
+  const y = Math.max(0, Math.min(Math.floor(py), img.naturalHeight - 1));
+  pctx.clearRect(0, 0, 1, 1);
+  pctx.drawImage(img, x, y, 1, 1, 0, 0, 1, 1);
+  const d = pctx.getImageData(0, 0, 1, 1).data;
+  if (d[3] > 12) return `rgb(${d[0]}, ${d[1]}, ${d[2]})`;
+  return undefined;
+}
+
+function sampleFillFromCrop(
+  img: HTMLImageElement,
+  sx: number,
+  sy: number,
+  sw: number,
+  sh: number,
+  scopeEl: HTMLElement
+): string {
+  const probe = document.createElement("canvas");
+  probe.width = 1;
+  probe.height = 1;
+  const pctx = probe.getContext("2d")!;
+  const pts: [number, number][] = [
+    [sx + sw * 0.5, sy + sh - 2],
+    [sx + sw * 0.5, sy + 2],
+    [sx + 1, sy + sh - 2],
+    [sx + sw - 2, sy + sh - 2],
+    [sx + 1, sy + 1],
+    [sx + sw - 2, sy + 1],
+    [sx + sw * 0.5, sy + sh * 0.5],
+  ];
+  for (const [px, py] of pts) {
+    const c = samplePixel(img, pctx, px, py);
+    if (c) return c;
+  }
+  return resolveSolidBackground(scopeEl);
+}
+
 const VERT = `attribute vec2 a_pos;
 void main(){ gl_Position = vec4(a_pos, 0.0, 1.0); }`;
 
@@ -193,6 +259,11 @@ uniform vec3 u_glowMix;
 uniform int u_exclCount;
 uniform vec4 u_excl[16];
 
+vec3 texRgb(vec2 tuv) {
+  vec4 c = texture2D(u_tex, tuv);
+  return c.rgb / max(c.a, 0.0001);
+}
+
 void main(){
   vec2 uv_frag = gl_FragCoord.xy / u_res;
   vec2 uv = vec2(uv_frag.x, 1.0 - uv_frag.y);
@@ -201,7 +272,7 @@ void main(){
       if (j >= u_exclCount) break;
       vec4 b = u_excl[j];
       if (uv.x >= b.x && uv.x <= b.x + b.z && uv.y >= b.y && uv.y <= b.y + b.w) {
-        gl_FragColor = vec4(texture2D(u_tex, uv).rgb, 1.0);
+        gl_FragColor = vec4(texRgb(uv), 1.0);
         return;
       }
     }
@@ -287,13 +358,13 @@ void main(){
       vec2 gOff = perp * f * 0.3;
       vec2 bOff = spread * (f + 1.0) - perp * f;
       vec2 st = uv + vec2(d.x, d.y);
-      r += texture2D(u_tex, st + vec2(rOff.x, rOff.y)).r * w;
-      g += texture2D(u_tex, st + vec2(gOff.x, gOff.y)).g * w;
-      b += texture2D(u_tex, st + vec2(bOff.x, bOff.y)).b * w;
+      r += texRgb(st + vec2(rOff.x, rOff.y)).r * w;
+      g += texRgb(st + vec2(gOff.x, gOff.y)).g * w;
+      b += texRgb(st + vec2(bOff.x, bOff.y)).b * w;
     }
     col = vec3(r, g, b) / tw;
   } else {
-    col = texture2D(u_tex, uv + vec2(d.x, d.y)).rgb;
+    col = texRgb(uv + vec2(d.x, d.y));
   }
   if(u_shimStr > 0.0){
     float di = fract(sin(dot(floor(gl_FragCoord.xy), vec2(12.9898, 78.233))) * 43758.5453);
@@ -377,21 +448,6 @@ export function attachRipple(
   };
   let glowPalette = computeGlowPalette();
 
-  const excludeRestore: Array<{
-    el: HTMLElement;
-    position: string;
-    zIndex: string;
-  }> = [];
-  for (const el of excludeEls) {
-    excludeRestore.push({
-      el,
-      position: el.style.position,
-      zIndex: el.style.zIndex,
-    });
-    if (getComputedStyle(el).position === "static") el.style.position = "relative";
-    el.style.zIndex = "2147483647";
-  }
-
   const overlay = document.createElement("canvas");
   overlay.setAttribute("data-ripppl-overlay", "");
   if (isBody) {
@@ -406,21 +462,16 @@ export function attachRipple(
   }
   if (isBody) {
     document.body.appendChild(overlay);
-  } else if (excludeEls.length > 0) {
-    scopeEl.insertBefore(overlay, scopeEl.firstChild);
   } else {
     scopeEl.appendChild(overlay);
   }
 
   const gl = overlay.getContext("webgl", {
-    premultipliedAlpha: true,
+    premultipliedAlpha: false,
     alpha: true,
+    antialias: true,
   })!;
   if (!gl) {
-    excludeRestore.forEach(({ el, position, zIndex }) => {
-      el.style.position = position;
-      el.style.zIndex = zIndex;
-    });
     overlay.remove();
     return {
       destroy() {},
@@ -441,6 +492,8 @@ export function attachRipple(
   gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG));
   gl.linkProgram(prog);
   gl.useProgram(prog);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
   const buf = gl.createBuffer()!;
   gl.bindBuffer(gl.ARRAY_BUFFER, buf);
@@ -504,6 +557,7 @@ export function attachRipple(
       gl.viewport(0, 0, pw, ph);
     }
   };
+  syncSize();
 
   const clearOverlay = () => {
     gl.clearColor(0, 0, 0, 0);
@@ -519,14 +573,9 @@ export function attachRipple(
       const fullW = innerWidth;
       const fullH = innerHeight;
 
-      const filter = (node: Node) => {
-        if (node instanceof Element && node.hasAttribute("data-ripppl-overlay"))
-          return false;
-        return true;
-      };
-
       const uploadCanvas = (canvas: HTMLCanvasElement) => {
         gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
         gl.texImage2D(
           gl.TEXTURE_2D,
           0,
@@ -543,23 +592,77 @@ export function attachRipple(
       const fullPh = Math.round(fullH * dpr);
       const frozenScrollX = window.scrollX;
       const frozenScrollY = window.scrollY;
-      const srScoped = !isBody ? scopeRect() : null;
 
-      let dataUrl: string;
+      let srScoped: {
+        left: number;
+        top: number;
+        width: number;
+        height: number;
+      } | null = null;
+      if (!isBody) {
+        const r = scopeEl.getBoundingClientRect();
+        const cs = getComputedStyle(scopeEl);
+        const bl = parseFloat(cs.borderLeftWidth) || 0;
+        const bt = parseFloat(cs.borderTopWidth) || 0;
+        srScoped = {
+          left: r.left + bl,
+          top: r.top + bt,
+          width: scopeEl.clientWidth,
+          height: scopeEl.clientHeight,
+        };
+      }
+
+      const filter = (node: Node) => {
+        if (node instanceof Element && node.hasAttribute("data-ripppl-overlay"))
+          return false;
+        return true;
+      };
+
+      let dataUrl: string | undefined;
       try {
-        dataUrl = await domtoimage.toPng(document.documentElement, {
-          width: fullPw,
-          height: fullPh,
-          style: {
-            transform: `scale(${dpr}) translate(${-frozenScrollX}px, ${-frozenScrollY}px)`,
-            transformOrigin: "top left",
-            width: fullW + "px",
-            height: fullH + "px",
-          },
-          filter,
+        const viewportCanvas = await html2canvas(document.documentElement, {
+          scale: dpr,
+          scrollX: frozenScrollX,
+          scrollY: frozenScrollY,
+          windowWidth: fullW,
+          windowHeight: fullH,
+          x: frozenScrollX,
+          y: frozenScrollY,
+          width: fullW,
+          height: fullH,
+          backgroundColor: null,
+          logging: false,
+          useCORS: true,
+          ignoreElements: (el) =>
+            el instanceof Element && el.hasAttribute("data-ripppl-overlay"),
         });
-      } finally {
-        window.scrollTo(frozenScrollX, frozenScrollY);
+        if (viewportCanvas.width >= 1 && viewportCanvas.height >= 1) {
+          try {
+            dataUrl = viewportCanvas.toDataURL("image/png");
+          } catch {
+            dataUrl = undefined;
+          }
+        }
+      } catch {
+        dataUrl = undefined;
+      }
+      if (!dataUrl) {
+        try {
+          dataUrl = await domtoimage.toPng(document.documentElement, {
+            width: fullW,
+            height: fullH,
+            scale: dpr,
+            style: {
+              transform: `translate(${-frozenScrollX}px, ${-frozenScrollY}px)`,
+              transformOrigin: "top left",
+              width: fullW + "px",
+              height: fullH + "px",
+            },
+            filter,
+          });
+        } catch {
+          return;
+        }
       }
       if (disposed) return;
 
@@ -577,6 +680,8 @@ export function attachRipple(
         tmpCanvas.width = fullPw;
         tmpCanvas.height = fullPh;
         const ctx = tmpCanvas.getContext("2d")!;
+        ctx.fillStyle = sampleFillFromCrop(img, 0, 0, iw, ih, document.body);
+        ctx.fillRect(0, 0, fullPw, fullPh);
         ctx.drawImage(img, 0, 0, iw, ih, 0, 0, fullPw, fullPh);
         uploadCanvas(tmpCanvas);
       } else {
@@ -584,34 +689,58 @@ export function attachRipple(
         if (sr.width < 1 || sr.height < 1) return;
         const destW = Math.round(sr.width * dpr);
         const destH = Math.round(sr.height * dpr);
-        const visLeft = Math.min(fullW, Math.max(0, sr.left));
-        const visTop = Math.min(fullH, Math.max(0, sr.top));
-        const visRight = Math.min(fullW, Math.max(0, sr.left + sr.width));
-        const visBottom = Math.min(fullH, Math.max(0, sr.top + sr.height));
-        const visW = visRight - visLeft;
-        const visH = visBottom - visTop;
-        if (visW < 1 || visH < 1) return;
-
-        let sx = Math.round((visLeft / fullW) * iw);
-        let sy = Math.round((visTop / fullH) * ih);
-        let sw = Math.round((visW / fullW) * iw);
-        let sh = Math.round((visH / fullH) * ih);
-        sx = Math.min(Math.max(0, sx), iw - 1);
-        sy = Math.min(Math.max(0, sy), ih - 1);
-        sw = Math.min(Math.max(1, sw), iw - sx);
-        sh = Math.min(Math.max(1, sh), ih - sy);
-
-        const dstX = Math.round(((visLeft - sr.left) / sr.width) * destW);
-        const dstY = Math.round(((visTop - sr.top) / sr.height) * destH);
-        const dstW = Math.round((visW / sr.width) * destW);
-        const dstH = Math.round((visH / sr.height) * destH);
 
         const tmpCanvas = document.createElement("canvas");
         tmpCanvas.width = destW;
         tmpCanvas.height = destH;
         const ctx = tmpCanvas.getContext("2d")!;
-        ctx.clearRect(0, 0, destW, destH);
-        ctx.drawImage(img, sx, sy, sw, sh, dstX, dstY, dstW, dstH);
+
+        const sx = (sr.left / fullW) * iw;
+        const sy = (sr.top / fullH) * ih;
+        const sw = (sr.width / fullW) * iw;
+        const sh = (sr.height / fullH) * ih;
+
+        const fullVis =
+          sr.left >= -0.5 &&
+          sr.top >= -0.5 &&
+          sr.left + sr.width <= fullW + 0.5 &&
+          sr.top + sr.height <= fullH + 0.5;
+
+        if (fullVis) {
+          ctx.fillStyle = sampleFillFromCrop(img, sx, sy, sw, sh, scopeEl);
+          ctx.fillRect(0, 0, destW, destH);
+          ctx.drawImage(img, sx, sy, sw, sh, 0, 0, destW, destH);
+        } else {
+          const visLeft = Math.min(fullW, Math.max(0, sr.left));
+          const visTop = Math.min(fullH, Math.max(0, sr.top));
+          const visRight = Math.min(fullW, Math.max(0, sr.left + sr.width));
+          const visBottom = Math.min(fullH, Math.max(0, sr.top + sr.height));
+          const visW = visRight - visLeft;
+          const visH = visBottom - visTop;
+          if (visW < 1 || visH < 1) return;
+
+          let sx = Math.round((visLeft / fullW) * iw);
+          let sy = Math.round((visTop / fullH) * ih);
+          let sw = Math.round((visW / fullW) * iw);
+          let sh = Math.round((visH / fullH) * ih);
+          sx = Math.min(Math.max(0, sx), iw - 1);
+          sy = Math.min(Math.max(0, sy), ih - 1);
+          sw = Math.min(Math.max(1, sw), iw - sx);
+          sh = Math.min(Math.max(1, sh), ih - sy);
+
+          let dstX = Math.round(((visLeft - sr.left) / sr.width) * destW);
+          let dstY = Math.round(((visTop - sr.top) / sr.height) * destH);
+          let dstW = Math.round((visW / sr.width) * destW);
+          let dstH = Math.round((visH / sr.height) * destH);
+          dstX = Math.max(0, Math.min(dstX, destW - 1));
+          dstY = Math.max(0, Math.min(dstY, destH - 1));
+          dstW = Math.max(1, Math.min(dstW, destW - dstX));
+          dstH = Math.max(1, Math.min(dstH, destH - dstY));
+
+          ctx.fillStyle = sampleFillFromCrop(img, sx, sy, sw, sh, scopeEl);
+          ctx.fillRect(0, 0, destW, destH);
+          ctx.drawImage(img, sx, sy, sw, sh, dstX, dstY, dstW, dstH);
+        }
         uploadCanvas(tmpCanvas);
       }
     } catch {
@@ -745,10 +874,6 @@ export function attachRipple(
       disposed = true;
       cancelAnimationFrame(raf);
       triggers.forEach((el) => el.removeEventListener("click", onClick, true));
-      excludeRestore.forEach(({ el, position, zIndex }) => {
-        el.style.position = position;
-        el.style.zIndex = zIndex;
-      });
       overlay.remove();
     },
     trigger(opts?: {
