@@ -291,6 +291,22 @@ export function attachRipple(
   const scopeEl = resolveScope(options.scope);
   const isBody = scopeEl === document.body;
 
+  const scopeRect = () => {
+    if (isBody) {
+      return { left: 0, top: 0, width: innerWidth, height: innerHeight };
+    }
+    const rect = scopeEl.getBoundingClientRect();
+    const cs = getComputedStyle(scopeEl);
+    const bl = parseFloat(cs.borderLeftWidth) || 0;
+    const bt = parseFloat(cs.borderTopWidth) || 0;
+    return {
+      left: rect.left + bl,
+      top: rect.top + bt,
+      width: scopeEl.clientWidth,
+      height: scopeEl.clientHeight,
+    };
+  };
+
   let amp = options.amplitude ?? 3.0;
   let freq = options.frequency ?? 0.018;
   let speed = options.speed ?? 300.0;
@@ -416,8 +432,8 @@ export function attachRipple(
     const dpr = devicePixelRatio || 1;
     const w = isBody ? innerWidth : scopeEl.clientWidth;
     const h = isBody ? innerHeight : scopeEl.clientHeight;
-    const pw = w * dpr;
-    const ph = h * dpr;
+    const pw = Math.round(w * dpr);
+    const ph = Math.round(h * dpr);
     if (overlay.width !== pw || overlay.height !== ph) {
       overlay.width = pw;
       overlay.height = ph;
@@ -447,18 +463,26 @@ export function attachRipple(
 
       const fullPw = Math.round(fullW * dpr);
       const fullPh = Math.round(fullH * dpr);
+      const frozenScrollX = window.scrollX;
+      const frozenScrollY = window.scrollY;
+      const rootRect = document.documentElement.getBoundingClientRect();
 
-      const dataUrl: string = await domtoimage.toPng(document.documentElement, {
-        width: fullPw,
-        height: fullPh,
-        style: {
-          transform: `scale(${dpr})`,
-          transformOrigin: "top left",
-          width: fullW + "px",
-          height: fullH + "px",
-        },
-        filter,
-      });
+      let dataUrl: string;
+      try {
+        dataUrl = await domtoimage.toPng(document.documentElement, {
+          width: fullPw,
+          height: fullPh,
+          style: {
+            transform: `scale(${dpr}) translate(${-frozenScrollX}px, ${-frozenScrollY}px)`,
+            transformOrigin: "top left",
+            width: fullW + "px",
+            height: fullH + "px",
+          },
+          filter,
+        });
+      } finally {
+        window.scrollTo(frozenScrollX, frozenScrollY);
+      }
       if (disposed) return;
 
       const img = new Image();
@@ -466,24 +490,43 @@ export function attachRipple(
       await img.decode();
       if (disposed) return;
 
+      const iw = img.naturalWidth;
+      const ih = img.naturalHeight;
+      if (iw < 1 || ih < 1) return;
+
       let srcX = 0;
       let srcY = 0;
+      let srcW = iw;
+      let srcH = ih;
       let destW = fullPw;
       let destH = fullPh;
 
       if (!isBody) {
         const rect = scopeEl.getBoundingClientRect();
-        srcX = Math.round(rect.left * dpr);
-        srcY = Math.round(rect.top * dpr);
-        destW = Math.round(rect.width * dpr);
-        destH = Math.round(rect.height * dpr);
+        const cs = getComputedStyle(scopeEl);
+        const bl = parseFloat(cs.borderLeftWidth) || 0;
+        const bt = parseFloat(cs.borderTopWidth) || 0;
+        const cropLeft = rect.left - rootRect.left + bl;
+        const cropTop = rect.top - rootRect.top + bt;
+        const cw = scopeEl.clientWidth;
+        const ch = scopeEl.clientHeight;
+        srcX = (cropLeft / fullW) * iw;
+        srcY = (cropTop / fullH) * ih;
+        srcW = (cw / fullW) * iw;
+        srcH = (ch / fullH) * ih;
+        destW = Math.round(cw * dpr);
+        destH = Math.round(ch * dpr);
+        srcX = Math.max(0, Math.min(srcX, iw - 1e-6));
+        srcY = Math.max(0, Math.min(srcY, ih - 1e-6));
+        srcW = Math.max(1e-6, Math.min(srcW, iw - srcX));
+        srcH = Math.max(1e-6, Math.min(srcH, ih - srcY));
       }
 
       const tmpCanvas = document.createElement("canvas");
       tmpCanvas.width = destW;
       tmpCanvas.height = destH;
       const ctx = tmpCanvas.getContext("2d")!;
-      ctx.drawImage(img, srcX, srcY, destW, destH, 0, 0, destW, destH);
+      ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, destW, destH);
 
       gl.bindTexture(gl.TEXTURE_2D, tex);
       gl.texImage2D(
@@ -498,8 +541,9 @@ export function attachRipple(
       syncSize();
     } catch {
       /* silent */
+    } finally {
+      capturing = false;
     }
-    capturing = false;
 
     if (texReady && ripples.length > 0 && !running) {
       running = true;
@@ -596,9 +640,7 @@ export function attachRipple(
 
   const onClick = async (e: Event) => {
     if (!(e instanceof MouseEvent) || e.button !== 0) return;
-    const rect = isBody
-      ? { left: 0, top: 0, width: innerWidth, height: innerHeight }
-      : scopeEl.getBoundingClientRect();
+    const rect = scopeRect();
     const cx = (e.clientX - rect.left) / rect.width;
     const cy = (e.clientY - rect.top) / rect.height;
     await emitRipple(cx, cy);

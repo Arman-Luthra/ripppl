@@ -8,6 +8,9 @@
       * {
         box-sizing: border-box;
       }
+      html {
+        scrollbar-gutter: stable;
+      }
       body {
         margin: 0;
         min-height: 100vh;
@@ -56,6 +59,13 @@
         gap: 0.75rem;
         justify-content: center;
       }
+      .row--page-ripple {
+        flex-wrap: nowrap;
+        max-width: 100%;
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+      }
       button {
         appearance: none;
         border: 1px solid oklch(1 0 0 / 0.12);
@@ -65,6 +75,8 @@
         border-radius: 10px;
         font: inherit;
         cursor: pointer;
+        white-space: nowrap;
+        flex-shrink: 0;
         transition:
           background 0.15s,
           border-color 0.15s;
@@ -251,7 +263,7 @@
     </p>
 
     <p class="section-label">Page-wide ripple (full viewport)</p>
-    <div class="row">
+    <div class="row row--page-ripple">
       <button type="button" class="page-trigger">Ripple Page</button>
       <button type="button" class="page-trigger">Another</button>
       <button type="button" id="card-pulse">Pulse scoped card (API)</button>
