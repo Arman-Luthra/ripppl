@@ -21,6 +21,7 @@
     "preview": "vite preview"
   },
   "devDependencies": {
+    "culori": "^4.0.2",
     "typescript": "^5.7.2",
     "vite": "^6.0.3"
   },

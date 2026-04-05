@@ -15,8 +15,12 @@
           system-ui,
           -apple-system,
           sans-serif;
-        background: linear-gradient(145deg, #1a1d26 0%, #0f1117 100%);
-        color: #e8eaef;
+        background: linear-gradient(
+          145deg,
+          oklch(0.24 0.02 270) 0%,
+          oklch(0.18 0.015 270) 100%
+        );
+        color: oklch(0.93 0.01 255);
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -54,8 +58,8 @@
       }
       button {
         appearance: none;
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid oklch(1 0 0 / 0.12);
+        background: oklch(1 0 0 / 0.06);
         color: inherit;
         padding: 0.65rem 1.1rem;
         border-radius: 10px;
@@ -66,12 +70,12 @@
           border-color 0.15s;
       }
       button:hover {
-        background: rgba(255, 255, 255, 0.1);
-        border-color: rgba(255, 255, 255, 0.2);
+        background: oklch(1 0 0 / 0.1);
+        border-color: oklch(1 0 0 / 0.2);
       }
       .card {
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid oklch(1 0 0 / 0.08);
+        background: oklch(1 0 0 / 0.03);
         border-radius: 14px;
         padding: 1.5rem 2rem;
         display: flex;
@@ -96,8 +100,8 @@
         gap: 0.5rem 1.5rem;
         width: 100%;
         max-width: 36rem;
-        background: rgba(255, 255, 255, 0.03);
-        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: oklch(1 0 0 / 0.03);
+        border: 1px solid oklch(1 0 0 / 0.08);
         border-radius: 14px;
         padding: 1.25rem 1.5rem;
       }
@@ -140,12 +144,12 @@
         right: 0;
         height: 6px;
         transform: translateY(-50%);
-        background: rgba(255, 255, 255, 0.1);
+        background: oklch(1 0 0 / 0.1);
         border-radius: 3px;
       }
       .slider-fill {
         height: 100%;
-        background: #7b8cde;
+        background: oklch(0.62 0.15 274);
         border-radius: 3px;
       }
       .slider-thumb {
@@ -153,7 +157,7 @@
         top: 50%;
         width: 14px;
         height: 14px;
-        background: #7b8cde;
+        background: oklch(0.62 0.15 274);
         border-radius: 50%;
         transform: translate(-50%, -50%);
       }
@@ -173,19 +177,19 @@
         width: 36px;
         height: 20px;
         border-radius: 10px;
-        background: rgba(255, 255, 255, 0.1);
+        background: oklch(1 0 0 / 0.1);
         cursor: pointer;
         position: relative;
         transition: background 0.2s;
       }
       .toggle.on {
-        background: #7b8cde;
+        background: oklch(0.62 0.15 274);
       }
       .toggle-knob {
         width: 16px;
         height: 16px;
         border-radius: 50%;
-        background: #fff;
+        background: oklch(1 0 0);
         position: absolute;
         top: 2px;
         left: 2px;
@@ -193,6 +197,49 @@
       }
       .toggle.on .toggle-knob {
         left: 18px;
+      }
+      .color-group {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        grid-column: 1 / -1;
+      }
+      .color-group label {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        opacity: 0.45;
+      }
+      .color-group-right {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .oklch-input {
+        width: min(100%, 14rem);
+        padding: 0.35rem 0.5rem;
+        border: 1px solid oklch(1 0 0 / 0.15);
+        border-radius: 6px;
+        background: oklch(0.2 0.02 270);
+        color: oklch(0.93 0.01 255);
+        font-family: ui-monospace, monospace;
+        font-size: 0.7rem;
+      }
+      .shimmer-color-native {
+        width: 32px;
+        height: 28px;
+        padding: 0;
+        border: 1px solid oklch(1 0 0 / 0.2);
+        border-radius: 6px;
+        cursor: pointer;
+        background: transparent;
+      }
+      .shimmer-color-native::-webkit-color-swatch-wrapper {
+        padding: 2px;
+      }
+      .shimmer-color-native::-webkit-color-swatch {
+        border-radius: 4px;
+        border: none;
       }
     </style>
   </head>
@@ -257,6 +304,71 @@
         <label>Chromatic Aberration</label>
         <div class="toggle" id="t-chromatic">
           <div class="toggle-knob"></div>
+        </div>
+      </div>
+      <div class="slider-group">
+        <label>Chromatic Intensity <span id="v-chromaticIntensity">0.4</span></label>
+        <div
+          class="slider"
+          data-param="chromaticIntensity"
+          data-min="0"
+          data-max="1.5"
+          data-step="0.05"
+          data-value="0.4"
+        >
+          <div class="slider-track"><div class="slider-fill"></div></div>
+          <div class="slider-thumb"></div>
+        </div>
+      </div>
+      <div class="slider-group">
+        <label>Shimmer duration <span id="v-shimmerDuration">2600</span>ms</label>
+        <div
+          class="slider"
+          data-param="shimmerDuration"
+          data-min="500"
+          data-max="8000"
+          data-step="100"
+          data-value="2600"
+        >
+          <div class="slider-track"><div class="slider-fill"></div></div>
+          <div class="slider-thumb"></div>
+        </div>
+      </div>
+      <div class="slider-group">
+        <label>Shimmer width <span id="v-shimmerWidth">1</span></label>
+        <div
+          class="slider"
+          data-param="shimmerWidth"
+          data-min="0.25"
+          data-max="3"
+          data-step="0.05"
+          data-value="1"
+        >
+          <div class="slider-track"><div class="slider-fill"></div></div>
+          <div class="slider-thumb"></div>
+        </div>
+      </div>
+      <div class="color-group">
+        <label>Shimmer</label>
+        <div class="color-group-right">
+          <input
+            type="color"
+            class="shimmer-color-native"
+            id="shimmer-color-picker"
+            value="#ff7527"
+            title="Pick color"
+          />
+          <input
+            type="text"
+            class="oklch-input"
+            id="shimmer-color"
+            value="oklch(0.72 0.19 45)"
+            spellcheck="false"
+            autocomplete="off"
+          />
+          <div class="toggle" id="t-shimmer">
+            <div class="toggle-knob"></div>
+          </div>
         </div>
       </div>
     </div>

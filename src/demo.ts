@@ -1,7 +1,10 @@
+import { converter, formatCss, formatHex, parse } from "culori";
 import { attachRipple } from "./riiiple";
 
 const page = attachRipple(".page-trigger");
 const card = attachRipple("#card-trigger", { scope: "#demo-card" });
+
+const toOklch = converter("oklch");
 
 function initSlider(el: HTMLElement) {
   const param = el.dataset.param!;
@@ -60,3 +63,47 @@ chromaToggle.addEventListener("click", () => {
   page.update({ chromatic: chromaOn });
   card.update({ chromatic: chromaOn });
 });
+
+const shimToggle = document.getElementById("t-shimmer")!;
+const shimColorInput = document.getElementById("shimmer-color") as HTMLInputElement;
+const shimColorPicker = document.getElementById("shimmer-color-picker") as HTMLInputElement;
+let shimOn = false;
+let shimColor = shimColorInput.value;
+
+function hexToOklch(hex: string): string {
+  const c = toOklch(parse(hex));
+  if (!c) return shimColorInput.value;
+  return formatCss(c);
+}
+
+function syncPickerFromOklch(oklch: string) {
+  const c = parse(oklch.trim());
+  if (c) shimColorPicker.value = formatHex(c);
+}
+
+const applyShimmer = () => {
+  const val = shimOn ? shimColor : false;
+  page.update({ shimmer: val });
+  card.update({ shimmer: val });
+};
+
+shimToggle.addEventListener("click", () => {
+  shimOn = !shimOn;
+  shimToggle.classList.toggle("on", shimOn);
+  applyShimmer();
+});
+
+shimColorPicker.addEventListener("input", () => {
+  const o = hexToOklch(shimColorPicker.value);
+  shimColorInput.value = o;
+  shimColor = o;
+  if (shimOn) applyShimmer();
+});
+
+shimColorInput.addEventListener("input", () => {
+  shimColor = shimColorInput.value;
+  syncPickerFromOklch(shimColor);
+  if (shimOn) applyShimmer();
+});
+
+syncPickerFromOklch(shimColorInput.value);

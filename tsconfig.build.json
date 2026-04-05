@@ -8,5 +8,5 @@
     "outDir": "dist",
     "rootDir": "src"
   },
-  "include": ["src/riiiple.ts"]
+  "include": ["src/riiiple.ts", "src/dom-to-image-more.d.ts"]
 }

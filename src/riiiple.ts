@@ -9,7 +9,38 @@ export type RippleOptions = {
   decay?: number;
   duration?: number;
   chromatic?: boolean;
+  chromaticIntensity?: number;
+  shimmer?: string | false;
+  shimmerWidth?: number;
+  shimmerDuration?: number;
 };
+
+function parseOklchToLinearRgb(css: string): [number, number, number] {
+  const s = css.trim();
+  if (!/^oklch\s*\(/i.test(s)) return [1, 1, 1];
+  const el = document.createElement("div");
+  el.style.color = s;
+  document.documentElement.appendChild(el);
+  const out = getComputedStyle(el).color;
+  el.remove();
+  const comma = out.match(
+    /rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/
+  );
+  if (comma)
+    return [
+      parseFloat(comma[1]) / 255,
+      parseFloat(comma[2]) / 255,
+      parseFloat(comma[3]) / 255,
+    ];
+  const space = out.match(/rgba?\(\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)/);
+  if (space)
+    return [
+      parseFloat(space[1]) / 255,
+      parseFloat(space[2]) / 255,
+      parseFloat(space[3]) / 255,
+    ];
+  return [1, 1, 1];
+}
 
 export type RippleHandle = {
   destroy: () => void;
@@ -50,11 +81,16 @@ uniform int u_count;
 uniform vec3 u_rip[16];
 uniform float u_freq, u_speed, u_amp, u_damp, u_decay;
 uniform float u_chroma;
+uniform vec3 u_shimColor;
+uniform float u_shimStr;
+uniform float u_shimWidth;
+uniform float u_shimDur;
 
 void main(){
   vec2 uv = gl_FragCoord.xy / u_res;
   uv.y = 1.0 - uv.y;
   vec2 d = vec2(0.0);
+  float maxShim = 0.0;
   for(int i = 0; i < 16; i++){
     if(i >= u_count) break;
     vec2 c = u_rip[i].xy;
@@ -73,6 +109,28 @@ void main(){
     float center = smoothstep(0.0, 10.0, dist);
 
     d -= normalize(diff) * wave * u_amp * center;
+
+    float b = max(0.0, behind);
+    float delayT = clamp((t - 0.05) / 0.32, 0.0, 1.0);
+    float delay = (1.0 - pow(1.0 - delayT, 3.0)) * step(0.05, t);
+    float growT = clamp(t / 3.9, 0.0, 1.0);
+    float easeOut = 1.0 - pow(1.0 - growT, 3.0);
+    float radialScale = clamp(1.0 + front * 0.0032 + front * front * 8.0e-7, 1.0, 5.0);
+    float sigma = mix(32.0, 142.0, easeOut) * radialScale * u_shimWidth;
+    float peak = mix(18.0, 72.0, easeOut) * radialScale * u_shimWidth;
+    float x = (b - peak) / max(sigma, 1.0);
+    float x2 = x * x;
+    float shimBell =
+      exp(-x2) * 0.68 + exp(-x2 * 0.52) * 0.32;
+    float tailW = mix(0.12, 0.075, easeOut) / (1.0 + t * 1.15 + front * 0.0012);
+    float shimTail = exp(-b * tailW);
+    float enterW = mix(10.0, 36.0, easeOut) * radialScale * u_shimWidth;
+    float shimEnter = smoothstep(0.0, enterW, b);
+    float fadeT = clamp(t / max(u_shimDur, 0.001), 0.0, 1.0);
+    float opacityEase = 1.0 - pow(fadeT, 2.35);
+    float opacityFade = opacityEase * delay * exp(-t * 0.72);
+    float shimEdge = shimEnter * shimBell * shimTail * opacityFade * center;
+    maxShim = max(maxShim, shimEdge);
   }
   d /= u_css;
 
@@ -98,6 +156,11 @@ void main(){
   } else {
     col = texture2D(u_tex, uv + d).rgb;
   }
+  if(u_shimStr > 0.0){
+    float di = fract(sin(dot(floor(gl_FragCoord.xy), vec2(12.9898, 78.233))) * 43758.5453);
+    float sm = clamp(maxShim * u_shimStr + (di - 0.5) * 0.012, 0.0, 1.0);
+    col = mix(col, u_shimColor, sm);
+  }
   gl_FragColor = vec4(col, 1.0);
 }`;
 
@@ -116,6 +179,13 @@ export function attachRipple(
   let decay = options.decay ?? 1.2;
   let duration = (options.duration ?? 3500) / 1000;
   let chromatic = options.chromatic ?? false;
+  let chromaticIntensity = options.chromaticIntensity ?? 0.4;
+  let shimColor: [number, number, number] = options.shimmer
+    ? parseOklchToLinearRgb(options.shimmer)
+    : [1, 1, 1];
+  let shimStr = options.shimmer ? 1.0 : 0.0;
+  let shimWidth = options.shimmerWidth ?? 1;
+  let shimDur = (options.shimmerDuration ?? 2600) / 1000;
 
   const overlay = document.createElement("canvas");
   overlay.setAttribute("data-riiiple-overlay", "");
@@ -175,6 +245,10 @@ export function attachRipple(
   const uDamp = loc("u_damp");
   const uDecay = loc("u_decay");
   const uChroma = loc("u_chroma");
+  const uShimColor = loc("u_shimColor");
+  const uShimStr = loc("u_shimStr");
+  const uShimWidth = loc("u_shimWidth");
+  const uShimDur = loc("u_shimDur");
   const uRip: (WebGLUniformLocation | null)[] = [];
   for (let i = 0; i < 16; i++) uRip.push(loc(`u_rip[${i}]`));
 
@@ -216,9 +290,8 @@ export function attachRipple(
     clearOverlay();
     try {
       const dpr = devicePixelRatio || 1;
-      const target = isBody ? document.documentElement : scopeEl;
-      const w = isBody ? innerWidth : scopeEl.clientWidth;
-      const h = isBody ? innerHeight : scopeEl.clientHeight;
+      const fullW = innerWidth;
+      const fullH = innerHeight;
 
       const filter = (node: Node) => {
         if (node instanceof Element && node.hasAttribute("data-riiiple-overlay"))
@@ -226,17 +299,17 @@ export function attachRipple(
         return true;
       };
 
-      const pw = Math.round(w * dpr);
-      const ph = Math.round(h * dpr);
+      const fullPw = Math.round(fullW * dpr);
+      const fullPh = Math.round(fullH * dpr);
 
-      const dataUrl: string = await domtoimage.toPng(target, {
-        width: pw,
-        height: ph,
+      const dataUrl: string = await domtoimage.toPng(document.documentElement, {
+        width: fullPw,
+        height: fullPh,
         style: {
           transform: `scale(${dpr})`,
           transformOrigin: "top left",
-          width: w + "px",
-          height: h + "px",
+          width: fullW + "px",
+          height: fullH + "px",
         },
         filter,
       });
@@ -247,11 +320,24 @@ export function attachRipple(
       await img.decode();
       if (disposed) return;
 
+      let srcX = 0;
+      let srcY = 0;
+      let destW = fullPw;
+      let destH = fullPh;
+
+      if (!isBody) {
+        const rect = scopeEl.getBoundingClientRect();
+        srcX = Math.round(rect.left * dpr);
+        srcY = Math.round(rect.top * dpr);
+        destW = Math.round(rect.width * dpr);
+        destH = Math.round(rect.height * dpr);
+      }
+
       const tmpCanvas = document.createElement("canvas");
-      tmpCanvas.width = pw;
-      tmpCanvas.height = ph;
+      tmpCanvas.width = destW;
+      tmpCanvas.height = destH;
       const ctx = tmpCanvas.getContext("2d")!;
-      ctx.drawImage(img, 0, 0, pw, ph);
+      ctx.drawImage(img, srcX, srcY, destW, destH, 0, 0, destW, destH);
 
       gl.bindTexture(gl.TEXTURE_2D, tex);
       gl.texImage2D(
@@ -311,7 +397,11 @@ export function attachRipple(
     gl.uniform1f(uAmp, amp);
     gl.uniform1f(uDamp, damp);
     gl.uniform1f(uDecay, decay);
-    gl.uniform1f(uChroma, chromatic ? 0.4 : 0.0);
+    gl.uniform1f(uChroma, chromatic ? chromaticIntensity : 0.0);
+    gl.uniform3f(uShimColor, shimColor[0], shimColor[1], shimColor[2]);
+    gl.uniform1f(uShimStr, shimStr);
+    gl.uniform1f(uShimWidth, shimWidth);
+    gl.uniform1f(uShimDur, shimDur);
 
     for (let j = 0; j < Math.min(ripples.length, 16); j++) {
       gl.uniform3f(uRip[j], ripples[j].cx, ripples[j].cy, ripples[j].t0);
@@ -363,6 +453,19 @@ export function attachRipple(
       if (opts.decay !== undefined) decay = opts.decay;
       if (opts.duration !== undefined) duration = opts.duration / 1000;
       if (opts.chromatic !== undefined) chromatic = opts.chromatic;
+      if (opts.chromaticIntensity !== undefined)
+        chromaticIntensity = opts.chromaticIntensity;
+      if (opts.shimmer !== undefined) {
+        if (opts.shimmer) {
+          shimColor = parseOklchToLinearRgb(opts.shimmer);
+          shimStr = 1.0;
+        } else {
+          shimStr = 0.0;
+        }
+      }
+      if (opts.shimmerWidth !== undefined) shimWidth = opts.shimmerWidth;
+      if (opts.shimmerDuration !== undefined)
+        shimDur = opts.shimmerDuration / 1000;
     },
   };
 }
