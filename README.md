@@ -2,15 +2,17 @@
 
 <p align="center">Ripple displacement over the <strong>real DOM</strong> — WebGL shader plus screen capture. Browser only.</p>
 
+<p align="center"><sub>Previews are GIFs. Full quality: <a href="https://github.com/Arman-Luthra/ripppl/blob/main/demo_1.mp4">demo_1.mp4</a> · <a href="https://github.com/Arman-Luthra/ripppl/blob/main/demo-2.mp4">demo-2.mp4</a></sub></p>
+
 <table width="100%">
   <tr>
     <td width="50%" align="center">
       <strong>Demo 1</strong><br /><br />
-      <video src="https://raw.githubusercontent.com/Arman-Luthra/ripppl/main/demo_1.mp4" controls playsinline muted loop width="100%"></video>
+      <img src="https://raw.githubusercontent.com/Arman-Luthra/ripppl/main/demo_1.gif" alt="ripppl demo 1" width="100%" />
     </td>
     <td width="50%" align="center">
       <strong>Demo 2</strong><br /><br />
-      <video src="https://raw.githubusercontent.com/Arman-Luthra/ripppl/main/demo-2.mp4" controls playsinline muted loop width="100%"></video>
+      <img src="https://raw.githubusercontent.com/Arman-Luthra/ripppl/main/demo-2.gif" alt="ripppl demo 2" width="100%" />
     </td>
   </tr>
 </table>
