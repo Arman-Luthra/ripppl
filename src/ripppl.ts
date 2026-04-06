@@ -124,6 +124,7 @@ function parseOklchToLinearRgb(css: string): [number, number, number] {
 export type RippleHandle = {
   destroy: () => void;
   update: (opts: Partial<RippleTuning>) => void;
+  invalidateCapture: () => void;
   trigger: (opts?: {
     x?: number;
     y?: number;
@@ -169,6 +170,73 @@ function parseBorderRadiusMinPx(el: HTMLElement): number {
     }
   }
   return minR === Infinity ? 0 : minR;
+}
+
+function ancestorClipsOverflow(el: HTMLElement): boolean {
+  const cs = getComputedStyle(el);
+  const o = cs.overflow;
+  const ox = cs.overflowX;
+  const oy = cs.overflowY;
+  return (
+    o === "hidden" ||
+    o === "clip" ||
+    ox === "hidden" ||
+    ox === "clip" ||
+    oy === "hidden" ||
+    oy === "clip"
+  );
+}
+
+function effectiveExcludeRadiusPx(el: HTMLElement, scopeEl: HTMLElement): number {
+  let r = parseBorderRadiusMinPx(el);
+  let node: HTMLElement | null = el.parentElement;
+  while (node && node !== scopeEl) {
+    if (ancestorClipsOverflow(node)) {
+      r = Math.max(r, parseBorderRadiusMinPx(node));
+    }
+    node = node.parentElement;
+  }
+  return r;
+}
+
+function parseCssRgbToVec3(css: string): [number, number, number] {
+  const s = css.trim();
+  let m = s.match(
+    /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)$/i
+  );
+  if (!m) {
+    m = s.match(
+      /^rgba?\(\s*([\d.]+%?)\s+([\d.]+%?)\s+([\d.]+%?)(?:\s*\/\s*([\d.]+%?))?\s*\)$/i
+    );
+  }
+  if (m) {
+    const parseCh = (x: string) =>
+      x.endsWith("%") ? (parseFloat(x) / 100) * 255 : parseFloat(x);
+    const r = parseCh(m[1]) / 255;
+    const g = parseCh(m[2]) / 255;
+    const b = parseCh(m[3]) / 255;
+    const a =
+      m[4] !== undefined
+        ? m[4].endsWith("%")
+          ? parseFloat(m[4]) / 100
+          : parseFloat(m[4])
+        : 1;
+    if (a >= 0.999) return [clamp01(r), clamp01(g), clamp01(b)];
+    return [
+      clamp01(r * a + 0.08 * (1 - a)),
+      clamp01(g * a + 0.08 * (1 - a)),
+      clamp01(b * a + 0.08 * (1 - a)),
+    ];
+  }
+  if (s.startsWith("#") && (s.length === 4 || s.length === 7)) {
+    const hex =
+      s.length === 4
+        ? `#${s[1]}${s[1]}${s[2]}${s[2]}${s[3]}${s[3]}`
+        : s;
+    const n = parseInt(hex.slice(1), 16);
+    return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+  }
+  return [0.1, 0.1, 0.12];
 }
 
 function resolveExcludeList(
@@ -232,21 +300,34 @@ function sampleFillFromCrop(
   sy: number,
   sw: number,
   sh: number,
-  scopeEl: HTMLElement
+  scopeEl: HTMLElement,
+  radiusPx?: number
 ): string {
   const probe = document.createElement("canvas");
   probe.width = 1;
   probe.height = 1;
   const pctx = probe.getContext("2d")!;
-  const pts: [number, number][] = [
+  const pts: [number, number][] = [];
+  if (radiusPx !== undefined && radiusPx > 0.5) {
+    const rr = Math.min(radiusPx, Math.min(sw, sh) * 0.5 - 1);
+    if (rr > 1) {
+      pts.push(
+        [sx + rr, sy + rr],
+        [sx + sw - rr, sy + rr],
+        [sx + rr, sy + sh - rr],
+        [sx + sw - rr, sy + sh - rr]
+      );
+    }
+  }
+  pts.push(
     [sx + sw * 0.5, sy + sh - 2],
     [sx + sw * 0.5, sy + 2],
     [sx + 1, sy + sh - 2],
     [sx + sw - 2, sy + sh - 2],
     [sx + 1, sy + 1],
     [sx + sw - 2, sy + 1],
-    [sx + sw * 0.5, sy + sh * 0.5],
-  ];
+    [sx + sw * 0.5, sy + sh * 0.5]
+  );
   for (const [px, py] of pts) {
     const c = samplePixel(img, pctx, px, py);
     if (c) return c;
@@ -277,6 +358,8 @@ uniform vec3 u_glowMix;
 uniform int u_exclCount;
 uniform vec4 u_excl[16];
 uniform float u_exclRad[16];
+uniform float u_scopeClip;
+uniform float u_scopeRad;
 
 float sdRoundBox(vec2 p, vec2 b, float r) {
   vec2 q = abs(p) - b + r;
@@ -291,6 +374,17 @@ vec3 texRgb(vec2 tuv) {
 void main(){
   vec2 uv_frag = gl_FragCoord.xy / u_res;
   vec2 uv = vec2(uv_frag.x, 1.0 - uv_frag.y);
+  if (u_scopeClip > 0.5) {
+    vec2 sizePx = u_css;
+    vec2 pTl = uv * u_css;
+    vec2 p = pTl - sizePx * 0.5;
+    float r = min(u_scopeRad, min(sizePx.x, sizePx.y) * 0.5);
+    float d = sdRoundBox(p, sizePx * 0.5, r);
+    if (d > 0.0) {
+      gl_FragColor = vec4(texRgb(uv), 1.0);
+      return;
+    }
+  }
   if (u_exclCount > 0) {
     for (int j = 0; j < 16; j++) {
       if (j >= u_exclCount) break;
@@ -506,6 +600,7 @@ export function attachRipple(
     return {
       destroy() {},
       update() {},
+      invalidateCapture() {},
       trigger() {},
     };
   }
@@ -560,6 +655,8 @@ export function attachRipple(
   for (let i = 0; i < 16; i++) uExcl.push(loc(`u_excl[${i}]`));
   const uExclRad: (WebGLUniformLocation | null)[] = [];
   for (let i = 0; i < 16; i++) uExclRad.push(loc(`u_exclRad[${i}]`));
+  const uScopeClip = loc("u_scopeClip");
+  const uScopeRad = loc("u_scopeRad");
   const uRip: (WebGLUniformLocation | null)[] = [];
   for (let i = 0; i < 16; i++) uRip.push(loc(`u_rip[${i}]`));
 
@@ -575,7 +672,15 @@ export function attachRipple(
   let running = false;
   let texReady = false;
   let capturing = false;
+  let capturePromise: Promise<void> | null = null;
   let disposed = false;
+
+  const invalidateTexture = () => {
+    texReady = false;
+  };
+  const onViewportChange = () => invalidateTexture();
+  window.addEventListener("resize", onViewportChange);
+  window.addEventListener("scroll", onViewportChange, { capture: true, passive: true });
 
   const syncSize = () => {
     const dpr = devicePixelRatio || 1;
@@ -597,10 +702,15 @@ export function attachRipple(
   };
 
   const capture = async () => {
-    if (capturing || disposed) return;
-    capturing = true;
-    clearOverlay();
-    try {
+    if (disposed) return;
+    if (capturePromise) {
+      await capturePromise;
+      if (texReady || disposed) return;
+    }
+    capturePromise = (async () => {
+      capturing = true;
+      clearOverlay();
+      try {
       const dpr = devicePixelRatio || 1;
       const fullW = innerWidth;
       const fullH = innerHeight;
@@ -650,33 +760,62 @@ export function attachRipple(
         return true;
       };
 
+      const ignoreOverlay = (el: Element) =>
+        el.hasAttribute("data-ripppl-overlay");
+
+      let scopedDirect = false;
       let dataUrl: string | undefined;
-      try {
-        const viewportCanvas = await html2canvas(document.documentElement, {
-          scale: dpr,
-          scrollX: frozenScrollX,
-          scrollY: frozenScrollY,
-          windowWidth: fullW,
-          windowHeight: fullH,
-          x: frozenScrollX,
-          y: frozenScrollY,
-          width: fullW,
-          height: fullH,
-          backgroundColor: null,
-          logging: false,
-          useCORS: true,
-          ignoreElements: (el) =>
-            el instanceof Element && el.hasAttribute("data-ripppl-overlay"),
-        });
-        if (viewportCanvas.width >= 1 && viewportCanvas.height >= 1) {
-          try {
-            dataUrl = viewportCanvas.toDataURL("image/png");
-          } catch {
-            dataUrl = undefined;
+      if (!isBody) {
+        try {
+          const scopedCanvas = await html2canvas(scopeEl, {
+            scale: dpr,
+            backgroundColor: null,
+            logging: false,
+            useCORS: true,
+            ignoreElements: (el) =>
+              el instanceof Element && ignoreOverlay(el),
+          });
+          if (scopedCanvas.width >= 1 && scopedCanvas.height >= 1) {
+            try {
+              dataUrl = scopedCanvas.toDataURL("image/png");
+              scopedDirect = true;
+            } catch {
+              dataUrl = undefined;
+            }
           }
+        } catch {
+          dataUrl = undefined;
         }
-      } catch {
-        dataUrl = undefined;
+      }
+      if (!dataUrl) {
+        scopedDirect = false;
+        try {
+          const viewportCanvas = await html2canvas(document.documentElement, {
+            scale: dpr,
+            scrollX: frozenScrollX,
+            scrollY: frozenScrollY,
+            windowWidth: fullW,
+            windowHeight: fullH,
+            x: frozenScrollX,
+            y: frozenScrollY,
+            width: fullW,
+            height: fullH,
+            backgroundColor: null,
+            logging: false,
+            useCORS: true,
+            ignoreElements: (el) =>
+              el instanceof Element && ignoreOverlay(el),
+          });
+          if (viewportCanvas.width >= 1 && viewportCanvas.height >= 1) {
+            try {
+              dataUrl = viewportCanvas.toDataURL("image/png");
+            } catch {
+              dataUrl = undefined;
+            }
+          }
+        } catch {
+          dataUrl = undefined;
+        }
       }
       if (!dataUrl) {
         try {
@@ -692,6 +831,7 @@ export function attachRipple(
             },
             filter,
           });
+          scopedDirect = false;
         } catch {
           return;
         }
@@ -726,7 +866,29 @@ export function attachRipple(
         tmpCanvas.width = destW;
         tmpCanvas.height = destH;
         const ctx = tmpCanvas.getContext("2d")!;
+        let cropFillRadiusForExclude = 0;
+        for (const ex of excludeEls) {
+          cropFillRadiusForExclude = Math.max(
+            cropFillRadiusForExclude,
+            effectiveExcludeRadiusPx(ex, scopeEl)
+          );
+        }
+        const fillRadiusPx =
+          cropFillRadiusForExclude > 0 ? cropFillRadiusForExclude : undefined;
 
+        if (scopedDirect) {
+          ctx.fillStyle = sampleFillFromCrop(
+            img,
+            0,
+            0,
+            iw,
+            ih,
+            scopeEl,
+            fillRadiusPx
+          );
+          ctx.fillRect(0, 0, destW, destH);
+          ctx.drawImage(img, 0, 0, iw, ih, 0, 0, destW, destH);
+        } else {
         const sx = (sr.left / fullW) * iw;
         const sy = (sr.top / fullH) * ih;
         const sw = (sr.width / fullW) * iw;
@@ -739,7 +901,15 @@ export function attachRipple(
           sr.top + sr.height <= fullH + 0.5;
 
         if (fullVis) {
-          ctx.fillStyle = sampleFillFromCrop(img, sx, sy, sw, sh, scopeEl);
+          ctx.fillStyle = sampleFillFromCrop(
+            img,
+            sx,
+            sy,
+            sw,
+            sh,
+            scopeEl,
+            fillRadiusPx
+          );
           ctx.fillRect(0, 0, destW, destH);
           ctx.drawImage(img, sx, sy, sw, sh, 0, 0, destW, destH);
         } else {
@@ -769,22 +939,37 @@ export function attachRipple(
           dstW = Math.max(1, Math.min(dstW, destW - dstX));
           dstH = Math.max(1, Math.min(dstH, destH - dstY));
 
-          ctx.fillStyle = sampleFillFromCrop(img, sx, sy, sw, sh, scopeEl);
+          ctx.fillStyle = sampleFillFromCrop(
+            img,
+            sx,
+            sy,
+            sw,
+            sh,
+            scopeEl,
+            fillRadiusPx
+          );
           ctx.fillRect(0, 0, destW, destH);
           ctx.drawImage(img, sx, sy, sw, sh, dstX, dstY, dstW, dstH);
         }
+        }
         uploadCanvas(tmpCanvas);
       }
-    } catch {
-      /* silent */
-    } finally {
-      capturing = false;
-    }
+      } catch {
+        /* silent */
+      } finally {
+        capturing = false;
+      }
 
-    if (texReady && ripples.length > 0 && !running) {
-      running = true;
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(tick);
+      if (texReady && ripples.length > 0 && !running) {
+        running = true;
+        cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(tick);
+      }
+    })();
+    try {
+      await capturePromise;
+    } finally {
+      capturePromise = null;
     }
   };
 
@@ -800,7 +985,6 @@ export function attachRipple(
     if (ripples.length === 0) {
       clearOverlay();
       running = false;
-      texReady = false;
       return;
     }
 
@@ -832,6 +1016,15 @@ export function attachRipple(
       1 / Math.sqrt(Math.max(0.2, shimWidth))
     );
     gl.uniform1f(uShimDur, shimDur);
+    if (uScopeClip && uScopeRad) {
+      if (isBody) {
+        gl.uniform1f(uScopeClip, 0);
+        gl.uniform1f(uScopeRad, 0);
+      } else {
+        gl.uniform1f(uScopeClip, 1);
+        gl.uniform1f(uScopeRad, parseBorderRadiusMinPx(scopeEl));
+      }
+    }
     gl.uniform3f(
       uGlowDodge,
       glowPalette.dodge[0],
@@ -867,7 +1060,7 @@ export function attachRipple(
         const zw = er.width / sr.width;
         const zh = er.height / sr.height;
         gl.uniform4f(uExcl[j], x, y, zw, zh);
-        const rPx = parseBorderRadiusMinPx(el);
+        const rPx = effectiveExcludeRadiusPx(el, scopeEl);
         gl.uniform1f(uExclRad[j], rPx);
       } else {
         gl.uniform4f(uExcl[j], 0, 0, 0, 0);
@@ -883,7 +1076,7 @@ export function attachRipple(
     if (disposed) return;
     const nx = clamp01(cx);
     const ny = clamp01(cy);
-    if (!running && !capturing) await capture();
+    if (!texReady) await capture();
     const t0 = performance.now() / 1000;
     ripples.push({ cx: nx, cy: ny, t0 });
     if (ripples.length > 16) ripples.shift();
@@ -902,14 +1095,37 @@ export function attachRipple(
     await emitRipple(cx, cy);
   };
 
-  triggers.forEach((el) => el.addEventListener("click", onClick, true));
+  const prewarmCapture = () => {
+    if (!disposed && !texReady) void capture();
+  };
+  triggers.forEach((el) => {
+    el.addEventListener("click", onClick, true);
+    el.addEventListener("pointerdown", prewarmCapture, { passive: true });
+  });
+
+  const warmCapture = () => {
+    if (!disposed && !texReady && !capturePromise) void capture();
+  };
+  if (typeof requestIdleCallback === "function") {
+    requestIdleCallback(warmCapture, { timeout: 1200 });
+  } else {
+    setTimeout(warmCapture, 300);
+  }
 
   return {
     destroy() {
       disposed = true;
       cancelAnimationFrame(raf);
-      triggers.forEach((el) => el.removeEventListener("click", onClick, true));
+      window.removeEventListener("resize", onViewportChange);
+      window.removeEventListener("scroll", onViewportChange, { capture: true } as AddEventListenerOptions);
+      triggers.forEach((el) => {
+        el.removeEventListener("click", onClick, true);
+        el.removeEventListener("pointerdown", prewarmCapture);
+      });
       overlay.remove();
+    },
+    invalidateCapture() {
+      if (!disposed) invalidateTexture();
     },
     trigger(opts?: {
       x?: number;

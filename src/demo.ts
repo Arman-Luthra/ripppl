@@ -1,11 +1,19 @@
 import { converter, formatCss, formatHex, parse } from "culori";
+import gsap from "gsap";
+import { Draggable } from "gsap/Draggable";
 import { attachRipple, type RippleTuning } from "./ripppl";
+
+gsap.registerPlugin(Draggable);
 
 const page = attachRipple(".page-trigger");
 const card = attachRipple("#card-trigger", { scope: "#demo-card" });
 const cardExclude = attachRipple("#exclude-card-trigger", {
   scope: "#demo-card-exclude",
   exclude: "#exclude-card-label",
+});
+const dndRipple = attachRipple("#demo-dnd-trigger", {
+  scope: "#demo-dnd-scope",
+  exclude: "#demo-dnd-image",
 });
 
 const toOklch = converter("oklch");
@@ -40,6 +48,7 @@ function initSlider(el: HTMLElement) {
     page.update({ [param]: value });
     card.update({ [param]: value });
     cardExclude.update({ [param]: value });
+    dndRipple.update({ [param]: value });
   };
 
   const onMove = (e: PointerEvent) => setFromX(e.clientX);
@@ -60,6 +69,7 @@ function initSlider(el: HTMLElement) {
   page.update(patch);
   card.update(patch);
   cardExclude.update(patch);
+  dndRipple.update(patch);
 }
 
 document.querySelectorAll<HTMLElement>(".slider").forEach(initSlider);
@@ -72,6 +82,7 @@ chromaToggle.addEventListener("click", () => {
   page.update({ chromatic: chromaOn });
   card.update({ chromatic: chromaOn });
   cardExclude.update({ chromatic: chromaOn });
+  dndRipple.update({ chromatic: chromaOn });
 });
 
 const shimToggle = document.getElementById("t-shimmer")!;
@@ -96,6 +107,7 @@ const applyShimmer = () => {
   page.update({ shimmer: val });
   card.update({ shimmer: val });
   cardExclude.update({ shimmer: val });
+  dndRipple.update({ shimmer: val });
 };
 
 shimToggle.addEventListener("click", () => {
@@ -126,4 +138,32 @@ document.getElementById("card-pulse")!.addEventListener("click", () => {
 const excludeLabel = document.getElementById("exclude-card-label")!;
 document.getElementById("exclude-from-label")!.addEventListener("click", () => {
   cardExclude.trigger({ fromElement: excludeLabel });
+});
+
+const dndDropzone = document.getElementById("demo-dnd-dropzone")!;
+const dndDragWrap = document.getElementById("demo-dnd-drag-wrap")!;
+const dndImage = document.getElementById("demo-dnd-image") as HTMLImageElement;
+const dndHint = document.getElementById("demo-dnd-hint")!;
+
+Draggable.create(dndDragWrap, {
+  type: "x,y",
+  bounds: document.getElementById("demo-dnd-scope")!,
+  onDrag() {
+    if (Draggable.hitTest(dndDragWrap, dndDropzone, "40%")) {
+      dndDropzone.classList.add("demo-dropzone--hit");
+    } else {
+      dndDropzone.classList.remove("demo-dropzone--hit");
+    }
+  },
+  onDragEnd() {
+    const over = Draggable.hitTest(dndDragWrap, dndDropzone, "40%");
+    if (over) {
+      dndHint.textContent = "Ripple from image";
+      dndRipple.invalidateCapture();
+      dndRipple.trigger({ fromElement: dndImage });
+    } else {
+      dndDropzone.classList.remove("demo-dropzone--hit");
+      dndHint.textContent = "Drop image here";
+    }
+  },
 });
