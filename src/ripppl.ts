@@ -107,6 +107,8 @@ export type RippleOptions = RippleTuning & {
   exclude?: boolean | TriggerInput;
 };
 
+export const RIPPPL_CAPTURE_IGNORE_ATTR = "data-ripppl-overlay";
+
 function parseOklchToLinearRgb(css: string): [number, number, number] {
   const o = parseOklchComponents(css);
   if (!o) return [1, 1, 1];
@@ -125,6 +127,7 @@ export type RippleHandle = {
   destroy: () => void;
   update: (opts: Partial<RippleTuning>) => void;
   invalidateCapture: () => void;
+  prefetchCapture: () => void;
   trigger: (opts?: {
     x?: number;
     y?: number;
@@ -573,7 +576,7 @@ export function attachRipple(
   let glowPalette = computeGlowPalette();
 
   const overlay = document.createElement("canvas");
-  overlay.setAttribute("data-ripppl-overlay", "");
+  overlay.setAttribute(RIPPPL_CAPTURE_IGNORE_ATTR, "");
   if (isBody) {
     overlay.style.cssText = `position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:${overlayZ};`;
   } else {
@@ -601,6 +604,7 @@ export function attachRipple(
       destroy() {},
       update() {},
       invalidateCapture() {},
+      prefetchCapture() {},
       trigger() {},
     };
   }
@@ -703,6 +707,7 @@ export function attachRipple(
 
   const capture = async () => {
     if (disposed) return;
+    if (texReady && !capturePromise) return;
     if (capturePromise) {
       await capturePromise;
       if (texReady || disposed) return;
@@ -755,13 +760,16 @@ export function attachRipple(
       }
 
       const filter = (node: Node) => {
-        if (node instanceof Element && node.hasAttribute("data-ripppl-overlay"))
+        if (
+          node instanceof Element &&
+          node.hasAttribute(RIPPPL_CAPTURE_IGNORE_ATTR)
+        )
           return false;
         return true;
       };
 
       const ignoreOverlay = (el: Element) =>
-        el.hasAttribute("data-ripppl-overlay");
+        el.hasAttribute(RIPPPL_CAPTURE_IGNORE_ATTR);
 
       let scopedDirect = false;
       let dataUrl: string | undefined;
@@ -1126,6 +1134,9 @@ export function attachRipple(
     },
     invalidateCapture() {
       if (!disposed) invalidateTexture();
+    },
+    prefetchCapture() {
+      if (!disposed) void capture();
     },
     trigger(opts?: {
       x?: number;

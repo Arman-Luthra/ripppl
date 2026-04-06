@@ -3,8 +3,8 @@
 <p align="center">Ripple displacement using WebGL over the DOM.</p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Arman-Luthra/ripppl/main/demo_1.gif" alt="" width="49%" />
-  <img src="https://raw.githubusercontent.com/Arman-Luthra/ripppl/main/demo-2.gif" alt="" width="49%" />
+  <img src="https://raw.githubusercontent.com/Arman-Luthra/ripppl/main/media/demo-1.gif" alt="" width="49%" />
+  <img src="https://raw.githubusercontent.com/Arman-Luthra/ripppl/main/media/demo-2.gif" alt="" width="49%" />
 </p>
 
 ## Installation
@@ -36,8 +36,12 @@ The returned **handle** exposes:
 | Method | Purpose |
 |--------|---------|
 | `update(partial)` | Merge new tuning values (see parameters below). |
-| `trigger({ x?, y? })` | Start a ripple at normalized coordinates **0–1** inside the scope (default center). |
+| `trigger({ x?, y?, fromElement? })` | Start a ripple at normalized coordinates **0–1** inside the scope, or centered on `fromElement`. |
+| `invalidateCapture()` | Mark the frozen DOM snapshot stale (for example after layout or content changes). The next `trigger` will capture again unless you prefetch first. |
+| `prefetchCapture()` | Start a background capture while the DOM is in a known-good state. Use when you know you will call `trigger` soon so capture work overlaps with transitions, loaders, or countdowns instead of blocking the first frame of the ripple. |
 | `destroy()` | Remove listeners, overlay, and WebGL resources. |
+
+Export **`RIPPPL_CAPTURE_IGNORE_ATTR`**: the attribute name (`data-ripppl-overlay`) placed on the WebGL overlay and on any element that must be omitted from the snapshot. Apply it to temporary UI that should not appear in the captured texture while `prefetchCapture` runs.
 
 Types: `RippleOptions`, `RippleTuning`, `RippleHandle` are exported from the package.
 

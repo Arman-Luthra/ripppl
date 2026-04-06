@@ -1,7 +1,11 @@
 import { converter, formatCss, formatHex, parse } from "culori";
 import gsap from "gsap";
 import { Draggable } from "gsap/Draggable";
-import { attachRipple, type RippleTuning } from "./ripppl";
+import {
+  attachRipple,
+  RIPPPL_CAPTURE_IGNORE_ATTR,
+  type RippleTuning,
+} from "./ripppl";
 
 gsap.registerPlugin(Draggable);
 
@@ -145,6 +149,7 @@ const dndDragWrap = document.getElementById("demo-dnd-drag-wrap")!;
 const dndImage = document.getElementById("demo-dnd-image") as HTMLImageElement;
 const dndHint = document.getElementById("demo-dnd-hint")!;
 const dndCountdown = document.getElementById("demo-dnd-countdown")!;
+dndCountdown.setAttribute(RIPPPL_CAPTURE_IGNORE_ATTR, "");
 
 function runCountdownThen(
   draggable: { disable: () => void; enable: () => void },
@@ -169,9 +174,9 @@ function runCountdownThen(
     tl.fromTo(
       dndCountdown,
       { opacity: 0.15, scale: 0.82 },
-      { opacity: 1, scale: 1, duration: 0.22, ease: "back.out(1.9)" }
+      { opacity: 1, scale: 1, duration: 0.18, ease: "back.out(1.9)" }
     );
-    tl.to(dndCountdown, { duration: 0.62 });
+    tl.to(dndCountdown, { duration: 0.38 });
   }
 }
 
@@ -190,9 +195,10 @@ const [dndDraggable] = Draggable.create(dndDragWrap, {
     dndDropzone.classList.remove("demo-dropzone--hit");
     if (over) {
       dndHint.textContent = "Get ready…";
+      dndRipple.invalidateCapture();
+      dndRipple.prefetchCapture();
       runCountdownThen(dndDraggable, () => {
         dndHint.textContent = "Ripple from image";
-        dndRipple.invalidateCapture();
         dndRipple.trigger({ fromElement: dndImage });
       });
     } else {
