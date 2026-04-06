@@ -144,8 +144,38 @@ const dndDropzone = document.getElementById("demo-dnd-dropzone")!;
 const dndDragWrap = document.getElementById("demo-dnd-drag-wrap")!;
 const dndImage = document.getElementById("demo-dnd-image") as HTMLImageElement;
 const dndHint = document.getElementById("demo-dnd-hint")!;
+const dndCountdown = document.getElementById("demo-dnd-countdown")!;
 
-Draggable.create(dndDragWrap, {
+function runCountdownThen(
+  draggable: { disable: () => void; enable: () => void },
+  onDone: () => void
+) {
+  draggable.disable();
+  dndCountdown.classList.add("demo-dnd-countdown--on");
+  dndCountdown.setAttribute("aria-hidden", "false");
+  const tl = gsap.timeline({
+    onComplete: () => {
+      dndCountdown.classList.remove("demo-dnd-countdown--on");
+      dndCountdown.textContent = "";
+      dndCountdown.setAttribute("aria-hidden", "true");
+      draggable.enable();
+      onDone();
+    },
+  });
+  for (const n of [3, 2, 1]) {
+    tl.add(() => {
+      dndCountdown.textContent = String(n);
+    });
+    tl.fromTo(
+      dndCountdown,
+      { opacity: 0.15, scale: 0.82 },
+      { opacity: 1, scale: 1, duration: 0.22, ease: "back.out(1.9)" }
+    );
+    tl.to(dndCountdown, { duration: 0.62 });
+  }
+}
+
+const [dndDraggable] = Draggable.create(dndDragWrap, {
   type: "x,y",
   bounds: document.getElementById("demo-dnd-scope")!,
   onDrag() {
@@ -157,12 +187,15 @@ Draggable.create(dndDragWrap, {
   },
   onDragEnd() {
     const over = Draggable.hitTest(dndDragWrap, dndDropzone, "40%");
+    dndDropzone.classList.remove("demo-dropzone--hit");
     if (over) {
-      dndHint.textContent = "Ripple from image";
-      dndRipple.invalidateCapture();
-      dndRipple.trigger({ fromElement: dndImage });
+      dndHint.textContent = "Get ready…";
+      runCountdownThen(dndDraggable, () => {
+        dndHint.textContent = "Ripple from image";
+        dndRipple.invalidateCapture();
+        dndRipple.trigger({ fromElement: dndImage });
+      });
     } else {
-      dndDropzone.classList.remove("demo-dropzone--hit");
       dndHint.textContent = "Drop image here";
     }
   },

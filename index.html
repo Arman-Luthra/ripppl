@@ -135,6 +135,7 @@
         white-space: nowrap;
       }
       .demo-dnd-drag-wrap {
+        position: relative;
         align-self: flex-start;
         touch-action: none;
         cursor: grab;
@@ -146,6 +147,25 @@
       }
       .demo-dnd-drag-wrap:active {
         cursor: grabbing;
+      }
+      .demo-dnd-countdown {
+        position: absolute;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        font-size: 2rem;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: -0.04em;
+        color: oklch(0.98 0.02 260);
+        text-shadow: 0 2px 14px oklch(0 0 0 / 0.55);
+        background: oklch(0.12 0.03 270 / 0.78);
+        pointer-events: none;
+        z-index: 1;
+      }
+      .demo-dnd-countdown.demo-dnd-countdown--on {
+        display: flex;
       }
       .demo-dnd-image {
         display: block;
@@ -494,6 +514,11 @@
           <span class="demo-dropzone-hint" id="demo-dnd-hint">Drop image here</span>
         </div>
         <div class="demo-dnd-drag-wrap" id="demo-dnd-drag-wrap">
+          <div
+            class="demo-dnd-countdown"
+            id="demo-dnd-countdown"
+            aria-hidden="true"
+          ></div>
           <img
             id="demo-dnd-image"
             class="demo-dnd-image"
